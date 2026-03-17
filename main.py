@@ -13,10 +13,13 @@ from datetime import datetime, timedelta
 from typing import List, Set, Optional
 from collections import deque
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query, HTTPException
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
+from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from pydantic import BaseModel
+from jose import JWTError, jwt
+from passlib.context import CryptContext
 import uvicorn
 
 app = FastAPI(title="ThreatIQ Platform", version="2.0.0", docs_url="/api/docs")
@@ -26,7 +29,151 @@ app.add_middleware(
     allow_origins=["*"],
     allow_methods=["*"],
     allow_headers=["*"],
+    allow_credentials=True,
 )
+
+# ══════════════════════════════════════════════════════════════════════════════
+# AUTH CONFIGURATION
+# ══════════════════════════════════════════════════════════════════════════════
+
+# ⚠️  Change SECRET_KEY to a random 32+ character string in production.
+#     Generate one with: python3 -c "import secrets; print(secrets.token_hex(32))"
+SECRET_KEY             = "threatiq-dev-secret-key-change-this-in-production-min-32-chars"
+ALGORITHM              = "HS256"
+TOKEN_EXPIRE_MINUTES   = 480   # 8-hour session
+
+pwd_context   = CryptContext(schemes=["sha256_crypt"], deprecated="auto")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/token")
+
+# Role hierarchy — higher number = broader access
+ROLE_HIERARCHY: dict = {
+    "tier1":   1,   # Tier 1 Analyst   — view only
+    "tier2":   2,   # Tier 2 Analyst   — triage & respond
+    "tier3":   3,   # Tier 3 / Hunter  — advanced investigation
+    "manager": 4,   # SOC Manager      — governance & metrics
+    "admin":   5,   # Administrator    — full access
+}
+
+ROLE_META: dict = {
+    "tier1":   {"label": "Tier 1 Analyst",        "tier": "T1",      "color": "#1890ff"},
+    "tier2":   {"label": "Tier 2 Analyst",         "tier": "T2",      "color": "#fa8c16"},
+    "tier3":   {"label": "Tier 3 / Threat Hunter", "tier": "T3",      "color": "#a855f7"},
+    "manager": {"label": "SOC Manager",            "tier": "Manager", "color": "#52c41a"},
+    "admin":   {"label": "Administrator",           "tier": "Admin",   "color": "#ff4d4f"},
+}
+
+# Demo user store — populated at startup with bcrypt-hashed passwords.
+# In production replace with a real database query.
+DEMO_USERS: dict = {}
+
+def init_users():
+    """Hash demo passwords and populate the user store at startup."""
+    raw = [
+        ("analyst1", "Tier1@SOC",    "J. Smith",      "tier1"),
+        ("analyst2", "Tier2@SOC",    "M. Rodriguez",  "tier2"),
+        ("hunter",   "Tier3@SOC",    "S. Patel",      "tier3"),
+        ("manager",  "Manager@SOC",  "K. Thompson",   "manager"),
+        ("admin",    "Admin@SOC",    "L. Nguyen",     "admin"),
+    ]
+    for username, password, name, role in raw:
+        DEMO_USERS[username] = {
+            "name":            name,
+            "role":            role,
+            "hashed_password": pwd_context.hash(password),
+        }
+
+# ── JWT helpers ────────────────────────────────────────────────────────────
+
+def create_access_token(data: dict) -> str:
+    payload = data.copy()
+    payload["exp"] = datetime.utcnow() + timedelta(minutes=TOKEN_EXPIRE_MINUTES)
+    return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
+
+# ── Role-based dependency factory ──────────────────────────────────────────
+
+def require_role(minimum_role: str):
+    """
+    FastAPI dependency that validates the JWT token and enforces a minimum role.
+    Usage:  Depends(require_role("tier2"))
+    """
+    async def _dep(token: str = Depends(oauth2_scheme)) -> dict:
+        credentials_exc = HTTPException(
+            status_code=401,
+            detail="Invalid or expired token.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+        try:
+            payload  = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+            username = payload.get("sub")
+            if not username or username not in DEMO_USERS:
+                raise credentials_exc
+        except JWTError:
+            raise credentials_exc
+
+        user = DEMO_USERS[username]
+        if ROLE_HIERARCHY.get(user["role"], 0) < ROLE_HIERARCHY[minimum_role]:
+            raise HTTPException(
+                status_code=403,
+                detail=f"Insufficient permissions. '{user['role']}' cannot access this resource. "
+                       f"Minimum required role: '{minimum_role}'.",
+            )
+        return {"username": username, **user}
+    return _dep
+
+# ── Pydantic auth models ───────────────────────────────────────────────────
+
+class TokenResponse(BaseModel):
+    access_token: str
+    token_type:   str
+    user:         dict
+
+# ── Auth endpoints ─────────────────────────────────────────────────────────
+
+@app.post("/auth/token", response_model=TokenResponse, tags=["Auth"])
+async def login(form_data: OAuth2PasswordRequestForm = Depends()):
+    """Authenticate with username + password. Returns a Bearer JWT token."""
+    user = DEMO_USERS.get(form_data.username)
+    if not user or not pwd_context.verify(form_data.password, user["hashed_password"]):
+        raise HTTPException(
+            status_code=401,
+            detail="Incorrect username or password.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    token = create_access_token({"sub": form_data.username, "role": user["role"]})
+    return TokenResponse(
+        access_token=token,
+        token_type="bearer",
+        user={
+            "username": form_data.username,
+            "name":     user["name"],
+            "role":     user["role"],
+            **ROLE_META[user["role"]],
+        },
+    )
+
+@app.get("/auth/me", tags=["Auth"])
+async def get_me(current_user: dict = Depends(require_role("tier1"))):
+    """Return the currently authenticated user's profile."""
+    role = current_user["role"]
+    return {
+        "username": current_user["username"],
+        "name":     current_user["name"],
+        "role":     role,
+        **ROLE_META[role],
+    }
+
+@app.get("/auth/users", tags=["Auth"])
+async def list_users(current_user: dict = Depends(require_role("admin"))):
+    """Admin only — list all user accounts."""
+    return [
+        {
+            "username": uname,
+            "name":     u["name"],
+            "role":     u["role"],
+            **ROLE_META[u["role"]],
+        }
+        for uname, u in DEMO_USERS.items()
+    ]
 
 # ══════════════════════════════════════════════════════════════════════════════
 # CONSTANTS & MOCK DATA DEFINITIONS
@@ -557,54 +704,82 @@ async def data_generator():
 # API ROUTES
 # ══════════════════════════════════════════════════════════════════════════════
 
-@app.get("/api/stats")
-def get_stats():
+# ── Permission map (documented) ────────────────────────────────────────────
+# tier1   : read alerts, sources, logs, incidents, feeds
+# tier2   : + update alert/incident status, view IOCs, playbooks
+# tier3   : + view correlation rules
+# manager : + view SOC metrics
+# admin   : + list users, full access
+# ───────────────────────────────────────────────────────────────────────────
+
+@app.get("/api/stats", tags=["Platform"])
+def get_stats(_: dict = Depends(require_role("tier1"))):
     return stats
 
-@app.get("/api/sources")
-def get_sources(status: Optional[str] = None):
+@app.get("/api/sources", tags=["Layer 1"])
+def get_sources(status: Optional[str] = None, _: dict = Depends(require_role("tier1"))):
     if status:
         return [s for s in sources_store if s["status"] == status]
     return sources_store
 
-@app.get("/api/logs")
-def get_logs(limit: int = Query(100, le=500), severity: Optional[str] = None, source_type: Optional[str] = None):
+@app.get("/api/logs", tags=["Layer 2"])
+def get_logs(
+    limit: int = Query(100, le=500),
+    severity: Optional[str] = None,
+    source_type: Optional[str] = None,
+    _: dict = Depends(require_role("tier1")),
+):
     data = list(logs_store)
-    if severity:    data = [l for l in data if l["severity"] == severity]
+    if severity:    data = [l for l in data if l["severity"]    == severity]
     if source_type: data = [l for l in data if l["source_type"] == source_type]
     return data[:limit]
 
-@app.get("/api/alerts")
-def get_alerts(limit: int = Query(60, le=300), severity: Optional[str] = None, status: Optional[str] = None):
+@app.get("/api/alerts", tags=["Layer 3"])
+def get_alerts(
+    limit: int = Query(60, le=300),
+    severity: Optional[str] = None,
+    status: Optional[str] = None,
+    _: dict = Depends(require_role("tier1")),
+):
     data = alerts_store
     if severity: data = [a for a in data if a["severity"] == severity]
     if status:   data = [a for a in data if a["status"]   == status]
     return data[:limit]
 
-@app.get("/api/alerts/{alert_id}")
-def get_alert(alert_id: str):
+@app.get("/api/alerts/{alert_id}", tags=["Layer 3"])
+def get_alert(alert_id: str, _: dict = Depends(require_role("tier1"))):
     alert = next((a for a in alerts_store if a["id"] == alert_id), None)
     if not alert:
         raise HTTPException(404, "Alert not found")
     return alert
 
-@app.put("/api/alerts/{alert_id}/status")
-def update_alert_status(alert_id: str, status: str):
+@app.put("/api/alerts/{alert_id}/status", tags=["Layer 3"])
+def update_alert_status(
+    alert_id: str,
+    status: str,
+    current_user: dict = Depends(require_role("tier2")),
+):
     alert = next((a for a in alerts_store if a["id"] == alert_id), None)
     if not alert:
         raise HTTPException(404, "Alert not found")
     alert["status"] = status
+    alert["updated_by"] = current_user["username"]
     return alert
 
-@app.get("/api/threats/iocs")
-def get_iocs(limit: int = Query(60, le=300), ioc_type: Optional[str] = None, threat_type: Optional[str] = None):
+@app.get("/api/threats/iocs", tags=["Layer 4"])
+def get_iocs(
+    limit: int = Query(60, le=300),
+    ioc_type: Optional[str] = None,
+    threat_type: Optional[str] = None,
+    _: dict = Depends(require_role("tier2")),
+):
     data = iocs_store
     if ioc_type:    data = [i for i in data if i["type"]        == ioc_type]
     if threat_type: data = [i for i in data if i["threat_type"] == threat_type]
     return data[:limit]
 
-@app.get("/api/threats/feeds")
-def get_feeds():
+@app.get("/api/threats/feeds", tags=["Layer 4"])
+def get_feeds(_: dict = Depends(require_role("tier1"))):
     return [{
         "name":        feed,
         "status":      random.choice(["active","active","active","degraded"]),
@@ -614,32 +789,40 @@ def get_feeds():
         "confidence":  random.randint(75, 99),
     } for feed in IOC_FEEDS]
 
-@app.get("/api/incidents")
-def get_incidents(status: Optional[str] = None):
+@app.get("/api/incidents", tags=["Layer 5"])
+def get_incidents(status: Optional[str] = None, _: dict = Depends(require_role("tier1"))):
     if status:
         return [i for i in incidents_store if i["status"] == status]
     return incidents_store
 
-@app.get("/api/incidents/{inc_id}")
-def get_incident(inc_id: str):
+@app.get("/api/incidents/{inc_id}", tags=["Layer 5"])
+def get_incident(inc_id: str, _: dict = Depends(require_role("tier1"))):
     inc = next((i for i in incidents_store if i["id"] == inc_id), None)
     if not inc:
         raise HTTPException(404, "Incident not found")
     return inc
 
-@app.put("/api/incidents/{inc_id}/status")
-def update_incident_status(inc_id: str, status: str):
+@app.put("/api/incidents/{inc_id}/status", tags=["Layer 5"])
+def update_incident_status(
+    inc_id: str,
+    status: str,
+    current_user: dict = Depends(require_role("tier2")),
+):
     inc = next((i for i in incidents_store if i["id"] == inc_id), None)
     if not inc:
         raise HTTPException(404, "Incident not found")
     inc["status"]     = status
     inc["updated_at"] = now_iso()
-    inc["timeline"].append({"time": now_iso(), "action": f"Status → {status}", "actor": "Analyst"})
+    inc["timeline"].append({
+        "time":   now_iso(),
+        "action": f"Status → {status}",
+        "actor":  current_user["username"],
+    })
     stats["incidents_open"] = len([i for i in incidents_store if i["status"] in ("open","investigating")])
     return inc
 
-@app.get("/api/playbooks")
-def get_playbooks():
+@app.get("/api/playbooks", tags=["Layer 5"])
+def get_playbooks(_: dict = Depends(require_role("tier2"))):
     return [{
         "id":              f"PB-{i+1:03d}",
         "name":            pb[0],
@@ -653,16 +836,16 @@ def get_playbooks():
         "category":        random.choice(["Endpoint","Network","Cloud","Email","Identity"]),
     } for i, pb in enumerate(PLAYBOOKS)]
 
-@app.get("/api/playbook-runs")
-def get_playbook_runs():
+@app.get("/api/playbook-runs", tags=["Layer 5"])
+def get_playbook_runs(_: dict = Depends(require_role("tier2"))):
     return playbook_runs
 
-@app.get("/api/rules")
-def get_rules():
+@app.get("/api/rules", tags=["Layer 3"])
+def get_rules(_: dict = Depends(require_role("tier3"))):
     return rules_store
 
-@app.get("/api/metrics")
-def get_metrics():
+@app.get("/api/metrics", tags=["Layer 7"])
+def get_metrics(current_user: dict = Depends(require_role("manager"))):
     return {
         "mttd_minutes":     stats["mttd_minutes"],
         "mttr_minutes":     stats["mttr_minutes"],
@@ -701,10 +884,20 @@ def get_metrics():
 # ══════════════════════════════════════════════════════════════════════════════
 
 @app.websocket("/ws")
-async def websocket_endpoint(websocket: WebSocket):
+async def websocket_endpoint(websocket: WebSocket, token: str = Query(...)):
+    # Validate JWT before accepting the connection
+    try:
+        payload  = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        username = payload.get("sub")
+        if not username or username not in DEMO_USERS:
+            await websocket.close(code=4001, reason="Invalid token")
+            return
+    except JWTError:
+        await websocket.close(code=4001, reason="Invalid or expired token")
+        return
+
     await manager.connect(websocket)
     try:
-        # Send initial state snapshot
         await websocket.send_text(json.dumps({
             "type": "initial_state",
             "data": {
@@ -731,6 +924,8 @@ def root():
 @app.on_event("startup")
 async def startup():
     print("⚡ ThreatIQ Platform starting up...")
+    init_users()
+    print(f"   ✓ {len(DEMO_USERS)} user accounts initialized (auth enabled)")
     init_data()
     print(f"   ✓ {len(sources_store)} data sources loaded")
     print(f"   ✓ {len(alerts_store)} alerts initialized")

@@ -23,6 +23,7 @@ The platform is designed as both a working SOC tool prototype and an educational
 - [Threat Intelligence](#threat-intelligence)
 - [SOAR & Playbooks](#soar--playbooks)
 - [SOC Metrics](#soc-metrics)
+- [Authentication & RBAC](#authentication--rbac)
 - [Getting Started](#getting-started)
 - [API Reference](#api-reference)
 - [Project Structure](#project-structure)
@@ -217,14 +218,14 @@ All data lives in Python in-memory structures (`deque`, `list`). When the server
 
 ---
 
-### Gap 3 — No Authentication or Authorization
+### Gap 3 — Authentication & Authorization ✅ Implemented
 
-The platform has zero access controls. Every API endpoint is publicly accessible with no credentials required.
+OAuth2/JWT authentication and role-based access control (RBAC) are now implemented. See [Authentication & RBAC](#authentication--rbac) for full documentation.
 
-- No login, sessions, or token-based authentication (JWT/OAuth2)
-- No role-based access control — T1, T2, T3 analysts should have different permissions
-- No audit trail of analyst actions (who changed what, and when)
+Remaining gaps for full production readiness:
+- No audit trail of analyst actions (who changed what, and when) — planned
 - No multi-tenancy support for separate team or client environments
+- Demo user store is in-memory — must be replaced with a real database (PostgreSQL)
 
 ---
 
@@ -597,7 +598,7 @@ Do not attempt to deploy all phases simultaneously. The recommended sequence is:
 ```
 Week 1  →  Phase 1: Connect one real log source (Windows Sysmon via Winlogbeat → Kafka)
 Week 2  →  Phase 2: Replace in-memory stores with Elasticsearch + PostgreSQL
-Week 3  →  Phase 3: Add JWT authentication and basic RBAC
+Week 3  →  Phase 3: JWT authentication and RBAC  ✅ COMPLETE — see Authentication & RBAC
 Week 4  →  Phase 5: Containerise with Docker, add Nginx with TLS
 Month 2 →  Phase 4: Implement first real playbook integration (e.g. Slack notification)
 Month 3 →  Full Kubernetes deployment, monitoring, and CI/CD
@@ -872,6 +873,131 @@ Each playbook represents a structured incident response procedure with 5–6 aut
 
 ---
 
+## Authentication & RBAC
+
+ThreatIQ implements OAuth2 with JWT tokens and role-based access control (RBAC) across all API endpoints and the WebSocket connection.
+
+---
+
+### How It Works
+
+```
+Browser                          ThreatIQ Backend
+   │                                    │
+   │  POST /auth/token                  │
+   │  username=analyst1&password=...    │
+   │ ─────────────────────────────────► │
+   │                                    │  Verify password (sha256_crypt)
+   │  { access_token: "eyJ..." }        │  Create JWT (8-hour expiry)
+   │ ◄───────────────────────────────── │
+   │                                    │
+   │  GET /api/alerts                   │
+   │  Authorization: Bearer eyJ...      │
+   │ ─────────────────────────────────► │
+   │                                    │  Decode JWT → extract role
+   │  200 OK  [ alert data ]            │  Check role ≥ required minimum
+   │ ◄───────────────────────────────── │
+   │                                    │
+   │  GET /api/metrics                  │
+   │  Authorization: Bearer eyJ...      │  Role = tier1
+   │ ─────────────────────────────────► │  Required = manager
+   │  403 Forbidden                     │  DENIED
+   │ ◄───────────────────────────────── │
+```
+
+Tokens are stored in `localStorage` and automatically included in every API request by the `authFetch()` wrapper. The WebSocket connection also validates the token passed as a `?token=` query parameter.
+
+---
+
+### Role Hierarchy
+
+| Role | Tier | Permissions |
+|---|---|---|
+| `tier1` | T1 Analyst | Read alerts, sources, logs, incidents, threat feeds |
+| `tier2` | T2 Analyst | All T1 + update alert/incident status, view IOCs, access playbooks |
+| `tier3` | T3 / Threat Hunter | All T2 + view and manage correlation rules |
+| `manager` | SOC Manager | All T3 + view SOC metrics, analyst performance, governance data |
+| `admin` | Administrator | Full access including user management |
+
+---
+
+### API Route Permission Map
+
+| Endpoint | Method | Minimum Role |
+|---|---|---|
+| `/api/stats` | GET | `tier1` |
+| `/api/sources` | GET | `tier1` |
+| `/api/logs` | GET | `tier1` |
+| `/api/alerts` | GET | `tier1` |
+| `/api/alerts/{id}` | GET | `tier1` |
+| `/api/threats/feeds` | GET | `tier1` |
+| `/api/incidents` | GET | `tier1` |
+| `/api/incidents/{id}` | GET | `tier1` |
+| `/api/alerts/{id}/status` | PUT | `tier2` |
+| `/api/incidents/{id}/status` | PUT | `tier2` |
+| `/api/threats/iocs` | GET | `tier2` |
+| `/api/playbooks` | GET | `tier2` |
+| `/api/playbook-runs` | GET | `tier2` |
+| `/api/rules` | GET | `tier3` |
+| `/api/metrics` | GET | `manager` |
+| `/auth/users` | GET | `admin` |
+| `/ws` (WebSocket) | — | `tier1` (token in query param) |
+
+---
+
+### Demo Accounts
+
+Five accounts are pre-loaded at startup — one per role. Passwords are hashed with `sha256_crypt` via passlib.
+
+| Username | Password | Role | Accessible Sections |
+|---|---|---|---|
+| `analyst1` | `Tier1@SOC` | Tier 1 Analyst | Overview, Sources, Logs, Alerts, Feeds, Incidents |
+| `analyst2` | `Tier2@SOC` | Tier 2 Analyst | All T1 + IOCs, Playbooks, status updates |
+| `hunter` | `Tier3@SOC` | Tier 3 / Threat Hunter | All T2 + Correlation Rules |
+| `manager` | `Manager@SOC` | SOC Manager | All T3 + SOC Metrics |
+| `admin` | `Admin@SOC` | Administrator | All sections + User Management |
+
+The login screen displays these credentials with a click-to-fill feature for quick testing.
+
+---
+
+### Frontend Auth Behaviour
+
+| Event | Behaviour |
+|---|---|
+| Page load | Checks `localStorage` for existing token via `GET /auth/me` |
+| Valid token found | Skips login screen, restores session automatically |
+| Login success | Token stored in `localStorage`, dashboard displayed |
+| 401 response | User is automatically signed out and redirected to login |
+| 403 response | Section displays "Access Denied" panel instead of broken UI |
+| Sign Out | Token removed from `localStorage`, WebSocket closed, login shown |
+| Nav items | Playbooks hidden for T1, Rules hidden for T1/T2, Metrics hidden below Manager |
+
+---
+
+### JWT Token Details
+
+| Property | Value |
+|---|---|
+| Algorithm | HS256 |
+| Expiry | 8 hours |
+| Payload fields | `sub` (username), `role`, `exp` |
+| Secret key | Configurable via `SECRET_KEY` constant in `main.py` |
+
+> **Security note:** The default `SECRET_KEY` in `main.py` must be replaced with a randomly generated 32+ character string before any non-local deployment. Generate one with: `python3 -c "import secrets; print(secrets.token_hex(32))"`
+
+---
+
+### Auth Endpoints
+
+| Endpoint | Method | Description |
+|---|---|---|
+| `/auth/token` | POST | Login — accepts `username` and `password` form fields, returns JWT |
+| `/auth/me` | GET | Returns the currently authenticated user's profile and role |
+| `/auth/users` | GET | Admin only — lists all registered user accounts |
+
+---
+
 ## Getting Started
 
 ### Requirements
@@ -909,24 +1035,36 @@ bash run.sh
 
 Full interactive documentation is available at **http://localhost:8001/api/docs**
 
-| Endpoint | Method | Query Params | Description |
-|---|---|---|---|
-| `/api/stats` | GET | — | Platform-wide KPI statistics |
-| `/api/sources` | GET | `status` | Data source inventory and health status |
-| `/api/logs` | GET | `limit`, `severity`, `source_type` | Recent normalized log entries |
-| `/api/alerts` | GET | `limit`, `severity`, `status` | SIEM alert queue |
-| `/api/alerts/{id}` | GET | — | Single alert with full enrichment detail |
-| `/api/alerts/{id}/status` | PUT | `status` | Update alert status |
-| `/api/threats/iocs` | GET | `limit`, `ioc_type`, `threat_type` | IOC database query |
-| `/api/threats/feeds` | GET | — | Intelligence feed status and stats |
-| `/api/incidents` | GET | `status` | Incident list |
-| `/api/incidents/{id}` | GET | — | Incident detail with timeline |
-| `/api/incidents/{id}/status` | PUT | `status` | Update incident status |
-| `/api/playbooks` | GET | — | Playbook library with step definitions |
-| `/api/playbook-runs` | GET | — | Active and historical playbook executions |
-| `/api/rules` | GET | — | Correlation rule library |
-| `/api/metrics` | GET | — | SOC performance metrics and analyst stats |
-| `/ws` | WebSocket | — | Real-time event stream |
+All endpoints except `/auth/token` require a valid `Authorization: Bearer <token>` header.
+
+**Auth endpoints** (no token required)
+
+| Endpoint | Method | Description |
+|---|---|---|
+| `/auth/token` | POST | Login — returns JWT access token |
+| `/auth/me` | GET | Current user profile (token required) |
+| `/auth/users` | GET | List all users — admin only |
+
+**Platform endpoints** (token + minimum role required)
+
+| Endpoint | Method | Min Role | Query Params | Description |
+|---|---|---|---|---|
+| `/api/stats` | GET | `tier1` | — | Platform-wide KPI statistics |
+| `/api/sources` | GET | `tier1` | `status` | Data source inventory and health |
+| `/api/logs` | GET | `tier1` | `limit`, `severity`, `source_type` | Normalized log entries |
+| `/api/alerts` | GET | `tier1` | `limit`, `severity`, `status` | SIEM alert queue |
+| `/api/alerts/{id}` | GET | `tier1` | — | Single alert with enrichment detail |
+| `/api/threats/feeds` | GET | `tier1` | — | Intelligence feed status |
+| `/api/incidents` | GET | `tier1` | `status` | Incident list |
+| `/api/incidents/{id}` | GET | `tier1` | — | Incident detail with timeline |
+| `/api/alerts/{id}/status` | PUT | `tier2` | `status` | Update alert status |
+| `/api/incidents/{id}/status` | PUT | `tier2` | `status` | Update incident status |
+| `/api/threats/iocs` | GET | `tier2` | `limit`, `ioc_type`, `threat_type` | IOC database |
+| `/api/playbooks` | GET | `tier2` | — | Playbook library with step definitions |
+| `/api/playbook-runs` | GET | `tier2` | — | Playbook execution history |
+| `/api/rules` | GET | `tier3` | — | Correlation rule library |
+| `/api/metrics` | GET | `manager` | — | SOC metrics and analyst performance |
+| `/ws` | WebSocket | `tier1` | `token` (query param) | Real-time event stream |
 
 ---
 
@@ -935,19 +1073,27 @@ Full interactive documentation is available at **http://localhost:8001/api/docs*
 ```
 threat-intel-platform/
 ├── main.py              # FastAPI backend
+│                        #   ├── Auth — OAuth2/JWT config, RBAC dependency, user store
+│                        #   ├── Auth endpoints — /auth/token, /auth/me, /auth/users
 │                        #   ├── Mock data constants & generators
 │                        #   ├── In-memory data stores (logs, alerts, IOCs, incidents)
-│                        #   ├── Background async data generator
-│                        #   ├── WebSocket connection manager
-│                        #   └── All REST API routes
-├── requirements.txt     # Python dependencies (fastapi, uvicorn, pydantic, websockets)
+│                        #   ├── Background async data generator (real-time simulation)
+│                        #   ├── WebSocket connection manager (token-authenticated)
+│                        #   └── All REST API routes (role-protected)
+├── requirements.txt     # Python dependencies
+│                        #   fastapi, uvicorn, pydantic, websockets,
+│                        #   python-jose[cryptography], passlib, python-multipart
 ├── run.sh               # Quick-start script — creates venv, installs deps, starts server
 └── frontend/
     └── index.html       # Single-page SOC dashboard
-                         #   ├── CSS — dark SOC theme, all component styles
-                         #   ├── HTML — sidebar nav, all 10 panel layouts
-                         #   └── JavaScript — WebSocket client, Chart.js charts,
-                         #                    real-time DOM updates, API calls
+                         #   ├── CSS — dark SOC theme, login overlay, role badge styles
+                         #   ├── HTML — login screen, sidebar nav, all 10 panel layouts
+                         #   └── JavaScript
+                         #         ├── Auth — authFetch(), login(), logout(), checkAuth()
+                         #         ├── Role guard — hasRole(), nav visibility by role
+                         #         ├── WebSocket — token passed as query param
+                         #         ├── Chart.js — severity donut, ingestion line, bar charts
+                         #         └── All panel renderers with real-time DOM updates
 ```
 
 ---

@@ -345,9 +345,145 @@ tr:hover td{background:rgba(24,144,255,.05)}
 .toast.toast-info    {border-left:3px solid var(--blue)}
 @keyframes toastIn{from{opacity:0;transform:translateX(20px)}to{opacity:1;transform:none}}
 @keyframes toastOut{from{opacity:1}to{opacity:0;transform:translateX(20px)}}
+
+/* ── LOGIN OVERLAY ───────────────────────────────────────────────────────── */
+#login-overlay{
+  position:fixed;inset:0;z-index:9999;
+  background:radial-gradient(ellipse at 30% 40%,#0d2040 0%,#050b18 70%);
+  display:flex;align-items:center;justify-content:center;
+}
+#login-overlay.hidden{display:none}
+.login-card{
+  background:var(--card);border:1px solid var(--border);border-radius:14px;
+  padding:36px 40px;width:420px;max-width:95vw;
+  box-shadow:0 24px 64px rgba(0,0,0,.6),0 0 0 1px rgba(24,144,255,.1);
+}
+.login-brand{display:flex;align-items:center;gap:12px;margin-bottom:28px}
+.login-brand-icon{
+  width:46px;height:46px;border-radius:12px;font-size:24px;
+  background:linear-gradient(135deg,var(--blue),var(--cyan));
+  display:flex;align-items:center;justify-content:center;
+}
+.login-brand-name{font-size:20px;font-weight:800;color:#fff}
+.login-brand-sub{font-size:11px;color:var(--muted);margin-top:2px}
+.login-title{font-size:15px;font-weight:700;color:#fff;margin-bottom:4px}
+.login-sub{font-size:12px;color:var(--muted);margin-bottom:22px}
+.login-field{margin-bottom:14px}
+.login-label{display:block;font-size:11px;color:var(--muted);font-weight:600;
+  text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px}
+.login-input{
+  width:100%;padding:9px 12px;border-radius:7px;font-size:13px;
+  border:1px solid var(--border);background:rgba(7,12,24,.8);color:var(--text);
+  outline:none;transition:border-color .15s;box-sizing:border-box;
+}
+.login-input:focus{border-color:var(--blue)}
+.login-btn{
+  width:100%;padding:10px;border-radius:7px;font-size:14px;font-weight:700;
+  background:linear-gradient(90deg,var(--blue),#0070cc);color:#fff;
+  border:none;cursor:pointer;margin-top:6px;transition:opacity .15s;
+}
+.login-btn:hover{opacity:.9}
+.login-btn:disabled{opacity:.5;cursor:not-allowed}
+.login-error{
+  color:var(--red);font-size:12px;margin-top:10px;padding:8px 12px;
+  background:rgba(255,77,79,.1);border:1px solid rgba(255,77,79,.3);border-radius:6px;
+  display:none;
+}
+.login-error.show{display:block}
+.demo-creds{margin-top:22px;border-top:1px solid var(--border);padding-top:16px}
+.demo-creds-title{font-size:10px;color:var(--muted);text-transform:uppercase;
+  letter-spacing:.5px;font-weight:600;margin-bottom:10px}
+.demo-cred-row{
+  display:flex;align-items:center;gap:8px;padding:5px 0;
+  border-bottom:1px solid rgba(26,48,80,.3);cursor:pointer;
+  transition:background .1s;border-radius:4px;padding:5px 6px;
+}
+.demo-cred-row:hover{background:rgba(24,144,255,.08)}
+.demo-cred-user{font-family:monospace;font-size:12px;color:var(--cyan);min-width:80px}
+.demo-cred-pass{font-family:monospace;font-size:11px;color:var(--muted);flex:1}
+.demo-cred-role{font-size:10px;font-weight:700;padding:1px 6px;border-radius:3px}
+
+/* ── USER BADGE (navbar) ─────────────────────────────────────────────────── */
+.user-badge{
+  display:flex;align-items:center;gap:8px;padding:4px 12px;
+  border-radius:20px;border:1px solid var(--border);
+  background:rgba(13,21,38,.8);cursor:default;
+}
+.user-name{font-size:12px;font-weight:600;color:#fff}
+.user-role-tag{font-size:10px;font-weight:700;padding:1px 7px;border-radius:3px}
+.logout-btn{
+  padding:4px 12px;border-radius:6px;font-size:11px;font-weight:600;
+  border:1px solid var(--border);background:transparent;color:var(--muted);
+  cursor:pointer;transition:all .15s;
+}
+.logout-btn:hover{border-color:var(--red);color:var(--red)}
+
+/* ── LOCKED SECTION ──────────────────────────────────────────────────────── */
+.access-denied{
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  height:300px;gap:12px;color:var(--muted);
+}
+.access-denied-icon{font-size:40px;opacity:.4}
+.access-denied-msg{font-size:14px;font-weight:600;color:var(--muted)}
+.access-denied-sub{font-size:12px}
 </style>
 </head>
 <body>
+
+<!-- ═══════════════ LOGIN OVERLAY ═══════════════ -->
+<div id="login-overlay">
+  <div class="login-card">
+    <div class="login-brand">
+      <div class="login-brand-icon">🛡</div>
+      <div>
+        <div class="login-brand-name">ThreatIQ</div>
+        <div class="login-brand-sub">Security Operations Center Platform</div>
+      </div>
+    </div>
+    <div class="login-title">Sign in to your account</div>
+    <div class="login-sub">Authenticate to access the SOC dashboard</div>
+    <div class="login-field">
+      <label class="login-label">Username</label>
+      <input class="login-input" id="login-username" type="text" placeholder="Enter username" autocomplete="username"/>
+    </div>
+    <div class="login-field">
+      <label class="login-label">Password</label>
+      <input class="login-input" id="login-password" type="password" placeholder="Enter password" autocomplete="current-password"
+             onkeydown="if(event.key==='Enter') doLogin()"/>
+    </div>
+    <button class="login-btn" id="login-btn" onclick="doLogin()">Sign In</button>
+    <div class="login-error" id="login-error">Incorrect username or password. Please try again.</div>
+
+    <div class="demo-creds">
+      <div class="demo-creds-title">Demo Accounts — click to fill</div>
+      <div class="demo-cred-row" onclick="fillCreds('analyst1','Tier1@SOC')">
+        <span class="demo-cred-user">analyst1</span>
+        <span class="demo-cred-pass">Tier1@SOC</span>
+        <span class="demo-cred-role" style="background:rgba(24,144,255,.2);color:#1890ff">T1 Analyst</span>
+      </div>
+      <div class="demo-cred-row" onclick="fillCreds('analyst2','Tier2@SOC')">
+        <span class="demo-cred-user">analyst2</span>
+        <span class="demo-cred-pass">Tier2@SOC</span>
+        <span class="demo-cred-role" style="background:rgba(250,140,22,.2);color:#fa8c16">T2 Analyst</span>
+      </div>
+      <div class="demo-cred-row" onclick="fillCreds('hunter','Tier3@SOC')">
+        <span class="demo-cred-user">hunter</span>
+        <span class="demo-cred-pass">Tier3@SOC</span>
+        <span class="demo-cred-role" style="background:rgba(168,85,247,.2);color:#a855f7">T3 Hunter</span>
+      </div>
+      <div class="demo-cred-row" onclick="fillCreds('manager','Manager@SOC')">
+        <span class="demo-cred-user">manager</span>
+        <span class="demo-cred-pass">Manager@SOC</span>
+        <span class="demo-cred-role" style="background:rgba(82,196,26,.2);color:#52c41a">SOC Manager</span>
+      </div>
+      <div class="demo-cred-row" onclick="fillCreds('admin','Admin@SOC')">
+        <span class="demo-cred-user">admin</span>
+        <span class="demo-cred-pass">Admin@SOC</span>
+        <span class="demo-cred-role" style="background:rgba(255,77,79,.2);color:#ff4d4f">Admin</span>
+      </div>
+    </div>
+  </div>
+</div>
 
 <!-- ═══════════════ NAVBAR ═══════════════ -->
 <nav class="navbar">
@@ -360,6 +496,11 @@ tr:hover td{background:rgba(24,144,255,.05)}
   <div class="nb-pill ok" id="ws-status"><span class="pulse green" id="ws-dot"></span><span id="ws-label">LIVE</span></div>
   <div class="nb-pill warn" id="threat-level-pill"><span class="pulse orange"></span><span id="threat-level-text">ELEVATED</span></div>
   <div class="nb-clock" id="clock">--:--:--</div>
+  <div class="user-badge" id="user-badge" style="display:none">
+    <span class="user-name" id="user-name">—</span>
+    <span class="user-role-tag" id="user-role-tag">—</span>
+  </div>
+  <button class="logout-btn" id="logout-btn" style="display:none" onclick="doLogout()">Sign Out</button>
 </nav>
 
 <!-- ═══════════════ LAYOUT ═══════════════ -->
@@ -820,6 +961,133 @@ tr:hover td{background:rgba(24,144,255,.05)}
 
 <script>
 // ═══════════════════════════════════════════════════════════════════════════
+// AUTH
+// ═══════════════════════════════════════════════════════════════════════════
+const ROLE_HIERARCHY = { tier1:1, tier2:2, tier3:3, manager:4, admin:5 };
+const ROLE_META = {
+  tier1:   { label:'Tier 1 Analyst',        tier:'T1',      color:'#1890ff' },
+  tier2:   { label:'Tier 2 Analyst',         tier:'T2',      color:'#fa8c16' },
+  tier3:   { label:'Tier 3 / Threat Hunter', tier:'T3',      color:'#a855f7' },
+  manager: { label:'SOC Manager',            tier:'Manager', color:'#52c41a' },
+  admin:   { label:'Administrator',           tier:'Admin',   color:'#ff4d4f' },
+};
+
+let authUser = null;  // { username, name, role, tier, label, color }
+
+function getToken() { return localStorage.getItem('threatiq_token'); }
+
+async function authFetch(url, options = {}) {
+  const token = getToken();
+  if (token) options.headers = { ...options.headers, 'Authorization': `Bearer ${token}` };
+  const res = await fetch(url, options);
+  if (res.status === 401) { doLogout(); return null; }
+  if (res.status === 403) {
+    const panel = document.querySelector('.panel.active');
+    if (panel) panel.innerHTML = `
+      <div class="access-denied">
+        <div class="access-denied-icon">🔒</div>
+        <div class="access-denied-msg">Access Denied</div>
+        <div class="access-denied-sub">Your role (${authUser?.tier||'—'}) does not have permission to view this section.</div>
+      </div>`;
+    return null;
+  }
+  return res;
+}
+
+function hasRole(minRole) {
+  if (!authUser) return false;
+  return (ROLE_HIERARCHY[authUser.role] || 0) >= (ROLE_HIERARCHY[minRole] || 99);
+}
+
+function fillCreds(user, pass) {
+  document.getElementById('login-username').value = user;
+  document.getElementById('login-password').value = pass;
+  document.getElementById('login-username').focus();
+}
+
+async function doLogin() {
+  const username = document.getElementById('login-username').value.trim();
+  const password = document.getElementById('login-password').value;
+  const btn      = document.getElementById('login-btn');
+  const errEl    = document.getElementById('login-error');
+
+  if (!username || !password) return;
+  btn.disabled    = true;
+  btn.textContent = 'Signing in…';
+  errEl.classList.remove('show');
+
+  try {
+    const body = new URLSearchParams({ username, password });
+    const res  = await fetch('/auth/token', { method:'POST', body });
+    if (!res.ok) {
+      errEl.classList.add('show');
+      btn.disabled = false; btn.textContent = 'Sign In';
+      return;
+    }
+    const data = await res.json();
+    localStorage.setItem('threatiq_token', data.access_token);
+    authUser = data.user;
+    showDashboard();
+  } catch {
+    errEl.textContent = 'Connection error. Is the server running?';
+    errEl.classList.add('show');
+    btn.disabled = false; btn.textContent = 'Sign In';
+  }
+}
+
+function doLogout() {
+  localStorage.removeItem('threatiq_token');
+  authUser = null;
+  document.getElementById('login-overlay').classList.remove('hidden');
+  document.getElementById('user-badge').style.display  = 'none';
+  document.getElementById('logout-btn').style.display  = 'none';
+  document.getElementById('login-password').value = '';
+  document.getElementById('login-btn').disabled   = false;
+  document.getElementById('login-btn').textContent = 'Sign In';
+  if (ws) { ws.close(); ws = null; }
+}
+
+function showDashboard() {
+  document.getElementById('login-overlay').classList.add('hidden');
+
+  // Update navbar user badge
+  const meta = ROLE_META[authUser.role] || {};
+  document.getElementById('user-name').textContent     = authUser.name;
+  document.getElementById('user-role-tag').textContent = meta.tier || authUser.role;
+  document.getElementById('user-role-tag').style.cssText =
+    `background:${meta.color}22;color:${meta.color};border:1px solid ${meta.color}44;padding:1px 7px;border-radius:3px`;
+  document.getElementById('user-badge').style.display  = 'flex';
+  document.getElementById('logout-btn').style.display  = 'block';
+
+  // Show/hide nav items based on role
+  // tier1+: all standard nav items
+  // tier2+: playbooks
+  // tier3+: correlation rules
+  // manager+: metrics
+  const showRules   = hasRole('tier3');
+  const showMetrics = hasRole('manager');
+  const showPB      = hasRole('tier2');
+  document.getElementById('nav-rules').style.display    = showRules   ? 'flex' : 'none';
+  document.getElementById('nav-metrics').style.display  = showMetrics ? 'flex' : 'none';
+  document.getElementById('nav-playbooks').style.display = showPB      ? 'flex' : 'none';
+
+  boot();
+}
+
+async function checkAuth() {
+  const token = getToken();
+  if (!token) return;
+  const res = await fetch('/auth/me', { headers:{ Authorization:`Bearer ${token}` } });
+  if (res.ok) {
+    const data = await res.json();
+    authUser = data;
+    showDashboard();
+  } else {
+    localStorage.removeItem('threatiq_token');
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // STATE
 // ═══════════════════════════════════════════════════════════════════════════
 const state = {
@@ -873,7 +1141,8 @@ function showPanel(name) {
 // ═══════════════════════════════════════════════════════════════════════════
 function connectWS() {
   const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-  ws = new WebSocket(`${proto}://${location.host}/ws`);
+  const token = getToken();
+  ws = new WebSocket(`${proto}://${location.host}/ws?token=${encodeURIComponent(token)}`);
 
   ws.onopen = () => {
     setWsStatus(true);
@@ -1139,7 +1408,8 @@ const sourceIcons = {
 
 async function loadSources() {
   if (!state.sources.length) {
-    const data = await fetch('/api/sources').then(r=>r.json()).catch(()=>[]);
+    const res  = await authFetch('/api/sources');
+    const data = res ? await res.json().catch(()=>[]) : [];
     state.sources = data;
   }
   renderSources();
@@ -1312,10 +1582,12 @@ function prependAlertRow(a) {
 // THREAT INTEL
 // ═══════════════════════════════════════════════════════════════════════════
 async function loadThreats() {
-  const [feeds, iocs] = await Promise.all([
-    fetch('/api/threats/feeds').then(r=>r.json()).catch(()=>[]),
-    fetch('/api/threats/iocs?limit=80').then(r=>r.json()).catch(()=>[]),
+  const [feedsRes, iocsRes] = await Promise.all([
+    authFetch('/api/threats/feeds'),
+    authFetch('/api/threats/iocs?limit=80'),
   ]);
+  const feeds = feedsRes ? await feedsRes.json().catch(()=>[]) : [];
+  const iocs  = iocsRes  ? await iocsRes.json().catch(()=>[])  : [];
   // Merge with live iocs
   state.iocs = [...iocs, ...state.iocs.filter(i=>!iocs.find(x=>x.id===i.id))].slice(0,300);
   renderFeeds(feeds);
@@ -1403,7 +1675,8 @@ function prependIOCRow(ioc) {
 // ═══════════════════════════════════════════════════════════════════════════
 async function renderKanban() {
   if (!state.incidents.length) {
-    const data = await fetch('/api/incidents').then(r=>r.json()).catch(()=>[]);
+    const r    = await authFetch('/api/incidents');
+    const data = r ? await r.json().catch(()=>[]) : [];
     state.incidents = data;
     const openCount = data.filter(i=>i.status==='open'||i.status==='investigating').length;
     updateBadge('incidents', openCount);
@@ -1450,10 +1723,12 @@ async function renderKanban() {
 // PLAYBOOKS
 // ═══════════════════════════════════════════════════════════════════════════
 async function loadPlaybooks() {
-  const [pbs, runs] = await Promise.all([
-    fetch('/api/playbooks').then(r=>r.json()).catch(()=>[]),
-    fetch('/api/playbook-runs').then(r=>r.json()).catch(()=>[]),
+  const [pbsRes, runsRes] = await Promise.all([
+    authFetch('/api/playbooks'),
+    authFetch('/api/playbook-runs'),
   ]);
+  const pbs  = pbsRes  ? await pbsRes.json().catch(()=>[])  : [];
+  const runs = runsRes ? await runsRes.json().catch(()=>[]) : [];
   renderPlaybookCards(pbs);
   renderPlaybookRuns(runs);
 }
@@ -1518,7 +1793,8 @@ function renderPlaybookRuns(runs) {
 // CORRELATION RULES
 // ═══════════════════════════════════════════════════════════════════════════
 async function loadRules() {
-  const rules = await fetch('/api/rules').then(r=>r.json()).catch(()=>[]);
+  const rulesRes = await authFetch('/api/rules');
+  const rules = rulesRes ? await rulesRes.json().catch(()=>[]) : [];
   const tbody = document.getElementById('rules-tbody');
   tbody.innerHTML = rules.map(r => `
     <tr>
@@ -1538,7 +1814,9 @@ async function loadRules() {
 // SOC METRICS
 // ═══════════════════════════════════════════════════════════════════════════
 async function loadMetrics() {
-  const m = await fetch('/api/metrics').then(r=>r.json()).catch(()=>({}));
+  const mRes = await authFetch('/api/metrics');
+  if (!mRes) return;
+  const m = await mRes.json().catch(()=>({}));
   setText('metric-mttd',     m.mttd_minutes || '—');
   setText('metric-mttr',     m.mttr_minutes || '—');
   setText('metric-fp',       m.false_positive_rate || '—');
@@ -1628,12 +1906,15 @@ function escHtml(s) {
 // BOOT
 // ═══════════════════════════════════════════════════════════════════════════
 async function boot() {
-  // Load initial data via REST
-  const [statsData, alertsData, logsData] = await Promise.all([
-    fetch('/api/stats').then(r=>r.json()).catch(()=>({})),
-    fetch('/api/alerts?limit=80').then(r=>r.json()).catch(()=>[]),
-    fetch('/api/logs?limit=150').then(r=>r.json()).catch(()=>[]),
+  const [statsRes, alertsRes, logsRes] = await Promise.all([
+    authFetch('/api/stats'),
+    authFetch('/api/alerts?limit=80'),
+    authFetch('/api/logs?limit=150'),
   ]);
+  const statsData  = statsRes  ? await statsRes.json().catch(()=>({})) : {};
+  const alertsData = alertsRes ? await alertsRes.json().catch(()=>[])  : [];
+  const logsData   = logsRes   ? await logsRes.json().catch(()=>[])    : [];
+
   state.stats  = statsData;
   state.alerts = alertsData;
   state.logs   = logsData;
@@ -1643,11 +1924,11 @@ async function boot() {
   renderRecentAlerts();
   updateBadge('alerts', alertsData.filter(a=>a.status==='new').length);
 
-  // Connect WebSocket
   connectWS();
 }
 
-boot();
+// On page load — check for existing session, otherwise show login
+checkAuth();
 </script>
 </body>
 </html>
