@@ -1,6 +1,26 @@
 # ThreatIQ — Threat Intelligence Platform
 
-A full-stack Security Operations Center (SOC) platform simulating real-world threat detection, intelligence, and response workflows across 7 architectural layers.
+ThreatIQ is a full-stack Security Operations Center (SOC) simulation platform that models real-world threat detection, intelligence enrichment, and incident response workflows. It spans all 7 layers of a modern SOC architecture — from raw telemetry ingestion through to analyst governance and reporting — and streams live simulated security events via WebSocket in real time.
+
+The platform is designed as both a working SOC tool prototype and an educational reference for understanding how enterprise security operations centers are built and how data flows from a raw log entry to a closed incident.
+
+---
+
+## Table of Contents
+
+- [Architecture](#architecture)
+- [How Data Flows](#how-data-flows)
+- [Platform Layers](#platform-layers)
+- [Dashboard](#dashboard)
+- [Real-Time Engine](#real-time-engine)
+- [Detection Content](#detection-content)
+- [Threat Intelligence](#threat-intelligence)
+- [SOAR & Playbooks](#soar--playbooks)
+- [SOC Metrics](#soc-metrics)
+- [Getting Started](#getting-started)
+- [API Reference](#api-reference)
+- [Project Structure](#project-structure)
+- [Tech Stack](#tech-stack)
 
 ---
 
@@ -12,32 +32,32 @@ A full-stack Security Operations Center (SOC) platform simulating real-world thr
 │  Endpoints · Servers · Firewalls · Cloud · Identity · Email  │
 │  Network Devices · Applications · OT/IoT                     │
 └──────────────────────┬──────────────────────────────────────┘
-                       ↓
+                       ↓  (38 sources, 8 source types)
 ┌─────────────────────────────────────────────────────────────┐
 │  Layer 2 │ LOG COLLECTION & INGESTION                        │
 │  Agents · Syslog · API Connectors · Event Streaming          │
 │  Log Normalization · Parsing · Enrichment                    │
 └──────────────────────┬──────────────────────────────────────┘
-                       ↓
+                       ↓  (500K+ events/day, ~2,000/min)
 ┌─────────────────────────────────────────────────────────────┐
 │  Layer 3 │ SIEM CORE                                         │
 │  Central Log Storage · Correlation Rules · Detection         │
 │  UEBA · Dashboards · Compliance Reporting                    │
 └──────────────────────┬──────────────────────────────────────┘
               Alerts / Events / Incidents
-                       ↓
+                       ↓  (18 correlation rules, MITRE-mapped)
 ┌─────────────────────────────────────────────────────────────┐
 │  Layer 4 │ THREAT INTELLIGENCE                               │
 │  External Feeds · IOC Enrichment · Reputation Services       │
 │  MITRE ATT&CK Mapping · Threat Contextualization            │
 └──────────────────────┬──────────────────────────────────────┘
-                       ↓
+                       ↓  (7 feeds, 130+ IOCs)
 ┌─────────────────────────────────────────────────────────────┐
 │  Layer 5 │ SOAR                                              │
 │  Case Management · Playbook Automation · Alert Triage        │
 │  Incident Orchestration · Workflow Automation                │
 └──────────────────────┬──────────────────────────────────────┘
-                       ↓
+                       ↓  (10 playbooks, auto-triggered)
 ┌─────────────────────────────────────────────────────────────┐
 │  Layer 6 │ RESPONSE & SECURITY CONTROLS                      │
 │  EDR/XDR · Firewall Blocking · Identity Access Control       │
@@ -53,76 +73,319 @@ A full-stack Security Operations Center (SOC) platform simulating real-world thr
 
 ---
 
-## Features
+## How Data Flows
 
-### Dashboard Sections
+Understanding the end-to-end data flow is central to ThreatIQ's design. A single security event moves through the platform as follows:
 
-| Section | Layer | Description |
+```
+Raw Telemetry
+     │
+     │  A Windows endpoint generates a ProcessCreate event.
+     ↓
+Log Normalization (Layer 2)
+     │
+     │  The event is parsed, timestamps normalized, fields extracted
+     │  (src_ip, dst_ip, user, event_type), and the log is tagged
+     │  with its source type (endpoint, firewall, cloud, etc.)
+     ↓
+SIEM Correlation (Layer 3)
+     │
+     │  The normalized log is evaluated against 18 correlation rules.
+     │  If it matches — e.g. an encoded PowerShell command — an Alert
+     │  is generated with MITRE ATT&CK tactic and technique mapped.
+     ↓
+Threat Enrichment (Layer 4)
+     │
+     │  The source IP is checked against threat feeds.
+     │  Geo-location, ASN, ISP, and reputation data are appended.
+     │  If the IP matches a known IOC, the hit counter increments.
+     ↓
+SOAR Triage (Layer 5)
+     │
+     │  Critical-severity alerts automatically create an Incident.
+     │  The SOAR engine assigns it to an analyst and triggers the
+     │  appropriate playbook (e.g. Malware Containment).
+     ↓
+Response Actions (Layer 6)
+     │
+     │  Playbook steps execute: isolate host, kill process, block IP,
+     │  reset credentials, capture memory dump, notify stakeholders.
+     ↓
+Analyst Review & Closure (Layer 7)
+     │
+     │  A Tier 2 or Tier 3 analyst reviews the incident timeline,
+     │  adds notes, confirms containment, and closes the case.
+     │  MTTD and MTTR are recorded for governance reporting.
+     ↓
+Closed Incident + Lessons Learned
+```
+
+---
+
+## Platform Layers
+
+### Layer 1 — Data Sources
+
+ThreatIQ ingests telemetry from 38 simulated sources across 8 source categories:
+
+| Source Type | Example Sources |
+|---|---|
+| Endpoint | WIN-WS-001, LINUX-SRV-01, MAC-DEV-007 |
+| Firewall | PA-FW-CORE, ASA-EDGE-01, FORTIGATE-02 |
+| Network | CISCO-SW-01, NEXUS-CORE, JUNIPER-RTR |
+| Cloud | AWS-CloudTrail, Azure-Monitor, GCP-Audit |
+| Identity | AD-DC-01, OKTA-SSO, AZURE-AD, CyberArk-PAM |
+| Application | NGINX-WEB-01, MSSQL-DB-01, TOMCAT-APP |
+| Email | EXCHANGE-01, O365-MAIL, ProofPoint-GW |
+| OT / IoT | SCADA-01, PLC-LINE-A, BMS-HVAC, CAMERA-NVR |
+
+Each source reports its operational status (Active / Warning / Offline), current ingestion rate in logs per minute, location, IP address, and OS version.
+
+### Layer 2 — Log Collection & Ingestion
+
+Logs are normalized into a common schema regardless of source type:
+
+```
+{
+  id, timestamp, source_type, source_name,
+  event_type, severity, message,
+  src_ip, dst_ip, user, enriched, tags
+}
+```
+
+Each source type produces distinct event types. For example:
+- **Endpoint:** ProcessCreate, NetworkConnect, FileCreate, RegModify, UserLogon, DllLoad, ServiceInstall
+- **Firewall:** ALLOW, DENY, THREAT_DETECTED, VPN_AUTH, SESSION_END
+- **Cloud:** AssumeRole, CreateUser, DeleteBucket, ModifySecGroup, LoginEvent
+- **Identity:** AuthSuccess, AuthFailed, PasswordChange, MFABypass, AccountLocked
+- **Email:** PhishingDetected, LinkClicked, AttachmentOpened, EmailForwarded
+
+Log messages are context-aware — a critical-severity ProcessCreate generates `powershell.exe -enc JABjAG0AZAAgAA==` while an info-level one generates `notepad.exe`. This makes the log stream realistic for analysis and filtering.
+
+### Layer 3 — SIEM Core
+
+The SIEM layer is the detection engine. It evaluates incoming logs against 18 correlation rules, each mapped to a MITRE ATT&CK tactic and technique. When a rule fires it produces an Alert containing:
+
+- Unique alert ID
+- Triggering rule name and description
+- Severity (Low / Medium / High / Critical)
+- Source and destination IP addresses
+- Associated user account
+- MITRE ATT&CK tactic and technique ID
+- Number of correlated log events
+- Threat enrichment data (geo, ASN, ISP, reputation, feed hits)
+- Status lifecycle: `new → investigating → escalated → resolved / false_positive`
+
+The SIEM dashboard shows a live alert table, severity distribution chart, and correlation rule hit counts.
+
+### Layer 4 — Threat Intelligence
+
+Every alert's source IP is enriched with contextual threat data from 7 external intelligence feeds. IOCs are stored in a searchable database with the following attributes:
+
+```
+{
+  type: ip | domain | hash | url | email
+  value, confidence (0–100), source_feed,
+  threat_type, tags, first_seen, last_seen, hit_count
+}
+```
+
+**Threat Types tracked:** malware, c2, phishing, botnet, scanner, ransomware, apt, cryptominer
+
+**Intelligence Feeds:**
+
+| Feed | Specialization |
+|---|---|
+| AlienVault OTX | Community threat sharing, multi-type IOCs |
+| VirusTotal | File hash reputation, URL/domain scanning |
+| Abuse.ch | Malware samples, C2 infrastructure, SSL certs |
+| MISP Community | Structured threat information sharing |
+| EmergingThreats | Network-based detection signatures |
+| Cisco Talos | Enterprise threat research, IP/domain reputation |
+| Shodan Intel | Internet-facing device intelligence |
+
+Each feed reports its status, last update time, IOCs added today, total IOC count, and confidence score.
+
+### Layer 5 — SOAR
+
+The SOAR layer handles case management and automated response. It has two primary components:
+
+**Incident Management**
+Incidents are tracked on a 4-column Kanban board:
+
+```
+Open  →  Investigating  →  Contained  →  Resolved
+```
+
+Each incident card shows its ID, title, severity, assigned analyst, linked alerts, active playbook, and a progress bar tracking playbook completion.
+
+Critical alerts automatically create incidents via the SOAR engine, assigned to a random analyst with a contextually appropriate playbook triggered.
+
+**Playbook Automation**
+Each playbook contains 5–6 sequential response steps that execute automatically. Steps progress in real time and are visible in the execution tracker. See [SOAR & Playbooks](#soar--playbooks) for full details.
+
+### Layer 6 — Response & Security Controls
+
+Response actions executed through playbook automation represent integrations with:
+
+- **EDR/XDR** — Host isolation, process termination, memory capture
+- **Firewall** — IP blocking, rule modification, rate limiting
+- **Identity** — Account disable, password reset, session revocation, MFA enforcement
+- **Email Security** — Quarantine, sender blocking, sandbox detonation
+- **ITSM / Ticketing** — Incident creation, stakeholder notification
+- **Forensics** — Memory dump capture, log preservation, evidence collection
+
+### Layer 7 — SOC Analysts & Governance
+
+The Metrics dashboard provides governance-level visibility across the SOC:
+
+| Metric | Description |
+|---|---|
+| MTTD | Mean Time to Detect — avg minutes from event to alert |
+| MTTR | Mean Time to Respond — avg minutes from alert to closure |
+| False Positive Rate | Percentage of alerts marked false positive |
+| Analyst Utilization | Percentage of analyst capacity currently in use |
+| Coverage Score | Percentage of MITRE ATT&CK techniques with active detection rules |
+| Threats Blocked | Automated blocks executed since platform start |
+
+Analyst performance is tracked individually showing alerts handled, incidents resolved, and average response time per analyst. Analysts are tiered (T1 / T2 / T3) to reflect escalation paths.
+
+---
+
+## Dashboard
+
+The single-page dashboard is organized into 10 navigable sections accessible from the left sidebar:
+
+| Section | Layer | What It Shows |
 |---|---|---|
-| Overview | All | KPI cards, alert severity donut, live ingestion rate chart, critical alert feed |
-| Architecture | Reference | Interactive 7-layer SOC architecture diagram |
-| Data Sources | 1 | 38 connected sources across 8 types — live status, logs/min rate |
-| Log Stream | 2 | Real-time scrolling log feed with severity and keyword filters |
-| SIEM Alerts | 3 | Live alert table with MITRE ATT&CK tags, geo enrichment, status management |
-| Correlation Rules | 3 | 18 detection rules mapped to MITRE ATT&CK techniques |
-| Threat Intel / IOCs | 4 | 7 threat feed status cards + IOC database with confidence scoring |
-| Incidents (Kanban) | 5 | 4-column kanban board: Open → Investigating → Contained → Resolved |
-| Playbooks | 5 | 10 automated response playbooks with live execution tracking |
-| SOC Metrics | 7 | MTTD, MTTR, false positive rate, analyst performance, coverage score |
+| Overview | All | KPI cards, alert severity donut chart, log ingestion rate (30-sample line chart), critical alert feed, incident status donut |
+| Architecture | Reference | Interactive 7-layer SOC flow diagram with component tags |
+| Data Sources | 1 | Grid of 38 source cards — status, type, location, IP, OS, logs/min |
+| Log Stream | 2 | Real-time scrolling log feed — color-coded by severity, filterable by severity and keyword |
+| SIEM Alerts | 3 | Live alert table with MITRE ATT&CK context, geo enrichment, status badges, multi-filter |
+| Correlation Rules | 3 | All 18 detection rules — hit counts, last triggered timestamp, enable/disable status |
+| Threat Intel / IOCs | 4 | Feed status cards with confidence bars + full IOC database table |
+| Incidents (Kanban) | 5 | 4-column kanban with incident cards showing playbook progress bars |
+| Playbooks | 5 | Playbook library cards + live execution run table with step-by-step progress |
+| SOC Metrics | 7 | MTTD/MTTR gauges, alert severity bar chart, per-analyst performance bars |
 
-### Real-Time Capabilities
+---
 
-- WebSocket connection streams live events every 0.6–2.2 seconds
-- New logs, alerts, IOCs, and incidents appear without page refresh
-- Critical/high alerts trigger toast notifications
-- Playbook execution steps update in real time
-- KPI counters increment live
+## Real-Time Engine
 
-### Detection Content (18 Correlation Rules)
+ThreatIQ's backend runs a continuous async data generator that simulates live security telemetry. Every 0.6–2.2 seconds it produces events and broadcasts them to all connected clients via WebSocket.
 
-| Rule | MITRE Technique | Severity |
+**Event types broadcast over WebSocket:**
+
+| Message Type | Trigger | UI Effect |
 |---|---|---|
-| Brute Force Login Attempt | T1110.001 | High |
-| Lateral Movement Detected | T1021.002 | Critical |
-| Data Exfiltration Suspected | T1041 | Critical |
-| C2 Beaconing Activity | T1071.001 | High |
-| Privilege Escalation Attempt | T1548.002 | High |
-| Ransomware Behavior Detected | T1486 | Critical |
-| SQL Injection Attempt | T1190 | Medium |
-| Phishing Link Clicked | T1566.002 | High |
-| Suspicious PowerShell Execution | T1059.001 | High |
-| Mimikatz Credential Dump | T1003.001 | Critical |
-| Kerberoasting Attack | T1558.003 | Critical |
-| Pass-the-Hash Activity | T1550.002 | Critical |
-| Outbound DNS Tunneling | T1048.003 | High |
-| Cloud Storage Bucket Exposed | T1530 | High |
-| Port Scan Detected | T1046 | Low |
-| Account Created Outside Hours | T1136.001 | Medium |
-| Firewall Rule Modified | T1562.004 | Medium |
-| Suspicious Scheduled Task | T1053.005 | Medium |
+| `new_log` | Every cycle | Prepends row to Log Stream, increments logs/day counter |
+| `new_alert` | Every 4th cycle or on high/critical log | Prepends row to Alerts table, updates severity chart, shows toast notification |
+| `new_incident` | On critical alert (50% probability) | Adds card to Kanban board, increments open incident counter |
+| `new_ioc` | Every 7th cycle | Prepends row to IOC table, increments IOC counter |
+| `stats_update` | Every 12th cycle | Refreshes all KPI cards |
+| `playbook_update` | Every 15th cycle | Advances playbook step, updates progress bar |
 
-### Threat Intelligence Feeds
+All UI updates are non-destructive — new data is prepended to existing views without clearing the page. The platform supports multiple simultaneous browser connections, each receiving the same broadcast stream.
 
-- AlienVault OTX
-- VirusTotal
-- Abuse.ch
-- MISP Community
-- EmergingThreats
-- Cisco Talos
-- Shodan Intel
+---
 
-### Response Playbooks (10)
+## Detection Content
 
-1. Phishing Response
-2. Malware Containment
-3. Account Compromise
-4. DDoS Mitigation
-5. Ransomware Response
-6. Insider Threat
-7. Cloud Misconfiguration
-8. Credential Stuffing
-9. Kerberoasting Defense
-10. Zero-Day Response
+### Correlation Rules (18)
+
+| Rule Name | MITRE Tactic | Technique | Severity |
+|---|---|---|---|
+| Brute Force Login Attempt | Initial Access | T1110.001 | High |
+| Lateral Movement Detected | Lateral Movement | T1021.002 | Critical |
+| Data Exfiltration Suspected | Exfiltration | T1041 | Critical |
+| C2 Beaconing Activity | Command & Control | T1071.001 | High |
+| Privilege Escalation Attempt | Privilege Escalation | T1548.002 | High |
+| Ransomware Behavior Detected | Impact | T1486 | Critical |
+| SQL Injection Attempt | Initial Access | T1190 | Medium |
+| Phishing Link Clicked | Initial Access | T1566.002 | High |
+| Suspicious PowerShell Execution | Execution | T1059.001 | High |
+| Account Created Outside Hours | Persistence | T1136.001 | Medium |
+| Outbound DNS Tunneling | Exfiltration | T1048.003 | High |
+| Mimikatz Credential Dump | Credential Access | T1003.001 | Critical |
+| Port Scan Detected | Discovery | T1046 | Low |
+| Firewall Rule Modified | Defense Evasion | T1562.004 | Medium |
+| Cloud Storage Bucket Exposed | Initial Access | T1530 | High |
+| Kerberoasting Attack | Credential Access | T1558.003 | Critical |
+| Pass-the-Hash Activity | Lateral Movement | T1550.002 | Critical |
+| Suspicious Scheduled Task | Persistence | T1053.005 | Medium |
+
+---
+
+## Threat Intelligence
+
+### IOC Types Tracked
+
+| Type | Example | Use Case |
+|---|---|---|
+| IP Address | 185.220.101.45 | Known C2 server, Tor exit node, scanner |
+| Domain | evil-malware.ru | Phishing domain, malware distribution |
+| File Hash (MD5) | d41d8cd98f00b204... | Malware sample identification |
+| URL | http://phish-update.com/abc123 | Phishing page, malware download link |
+| Email Address | attacker@c2-beacon.net | Phishing sender, BEC actor |
+
+### IOC Confidence Scoring
+
+Each IOC carries a confidence score (0–100) reflecting the reliability of the source and corroborating evidence:
+
+- **90–100** — Confirmed malicious, multiple source attribution
+- **75–89** — High confidence, single credible source
+- **60–74** — Suspicious, limited corroboration — treat as indicator only
+
+---
+
+## SOAR & Playbooks
+
+### Playbook Library (10)
+
+Each playbook represents a structured incident response procedure with 5–6 automated steps:
+
+**1. Phishing Response**
+> Quarantine Email → Block Sender Domain → Detonate Link in Sandbox → Notify User → Hunt Similar Emails → Update Email Filter
+
+**2. Malware Containment**
+> Isolate Host → Capture Memory Dump → Kill Malicious Process → Remove Persistence → Scan Network Shares → Restore from Backup
+
+**3. Account Compromise**
+> Disable Account → Reset Password → Revoke Active Sessions → Review Activity → Enable MFA → Notify User & HR
+
+**4. DDoS Mitigation**
+> Enable Rate Limiting → Activate Scrubbing → Block Attacking IPs → Notify ISP → Monitor Bandwidth → Document Attack
+
+**5. Ransomware Response**
+> Isolate Affected Hosts → Identify Patient Zero → Disable Network Shares → Notify Management → Assess Backup Integrity → Engage IR Team
+
+**6. Insider Threat**
+> Capture Evidence → Restrict Access → Review Data Transfers → Notify HR & Legal → Preserve Logs → Escalate
+
+**7. Cloud Misconfiguration**
+> Remediate Exposure → Review IAM Policies → Enable Logging → Check Data Access → Apply SCPs → Update Runbook
+
+**8. Credential Stuffing**
+> Block Source IPs → Enforce MFA → Reset Compromised Accounts → Alert Users → Review Auth Logs → Update WAF Rules
+
+**9. Kerberoasting Defense**
+> Identify Targeted SPNs → Reset Service Accounts → Enable AES Encryption → Alert Tier-3 → Hunt Lateral Movement
+
+**10. Zero-Day Response**
+> Identify Affected Systems → Apply Virtual Patch → Increase Monitoring → Notify Vendor → Prepare Remediation
+
+---
+
+## SOC Metrics
+
+| Metric | Typical Range | Good Benchmark |
+|---|---|---|
+| MTTD (Mean Time to Detect) | 8–20 minutes | < 10 min |
+| MTTR (Mean Time to Respond) | 32–70 minutes | < 45 min |
+| False Positive Rate | 3–12% | < 5% |
+| Analyst Utilization | 60–96% | 70–85% |
+| Detection Coverage Score | 78–99% | > 90% |
 
 ---
 
@@ -132,17 +395,14 @@ A full-stack Security Operations Center (SOC) platform simulating real-world thr
 
 - Python 3.9+
 
-### Installation & Run
+### Quick Start
 
 ```bash
-# Clone or navigate to the project directory
-cd "threat-intel-platform"
-
-# Run the platform (creates virtualenv and installs deps automatically)
+cd "/Users/sashi/Desktop/TF_projects/Threat Hunting/threat-intel-platform"
 bash run.sh
 ```
 
-Then open **http://localhost:8001** in your browser.
+Open **http://localhost:8001** in your browser.
 
 ### Manual Setup
 
@@ -153,62 +413,70 @@ pip install -r requirements.txt
 uvicorn main:app --host 0.0.0.0 --port 8001
 ```
 
----
+### If Port is Already in Use
 
-## Project Structure
-
-```
-threat-intel-platform/
-├── main.py              # FastAPI backend — all API routes, WebSocket, data generator
-├── requirements.txt     # Python dependencies
-├── run.sh               # Quick-start script
-└── frontend/
-    └── index.html       # Single-page SOC dashboard (HTML + CSS + JS)
+```bash
+lsof -ti:8001 | xargs kill -9
+bash run.sh
 ```
 
 ---
 
 ## API Reference
 
-| Endpoint | Method | Description |
-|---|---|---|
-| `/api/stats` | GET | Platform-wide KPI statistics |
-| `/api/sources` | GET | Data source inventory and status |
-| `/api/logs` | GET | Recent log entries (filterable by severity, source type) |
-| `/api/alerts` | GET | SIEM alerts (filterable by severity, status) |
-| `/api/alerts/{id}/status` | PUT | Update alert status |
-| `/api/threats/iocs` | GET | IOC database (filterable by type, threat type) |
-| `/api/threats/feeds` | GET | Threat feed status |
-| `/api/incidents` | GET | Incident list (filterable by status) |
-| `/api/incidents/{id}/status` | PUT | Update incident status |
-| `/api/playbooks` | GET | Playbook definitions |
-| `/api/playbook-runs` | GET | Playbook execution history |
-| `/api/rules` | GET | Correlation rule library |
-| `/api/metrics` | GET | SOC performance metrics |
-| `/ws` | WS | Real-time event stream |
-| `/api/docs` | GET | Interactive Swagger UI |
+Full interactive documentation is available at **http://localhost:8001/api/docs**
+
+| Endpoint | Method | Query Params | Description |
+|---|---|---|---|
+| `/api/stats` | GET | — | Platform-wide KPI statistics |
+| `/api/sources` | GET | `status` | Data source inventory and health status |
+| `/api/logs` | GET | `limit`, `severity`, `source_type` | Recent normalized log entries |
+| `/api/alerts` | GET | `limit`, `severity`, `status` | SIEM alert queue |
+| `/api/alerts/{id}` | GET | — | Single alert with full enrichment detail |
+| `/api/alerts/{id}/status` | PUT | `status` | Update alert status |
+| `/api/threats/iocs` | GET | `limit`, `ioc_type`, `threat_type` | IOC database query |
+| `/api/threats/feeds` | GET | — | Intelligence feed status and stats |
+| `/api/incidents` | GET | `status` | Incident list |
+| `/api/incidents/{id}` | GET | — | Incident detail with timeline |
+| `/api/incidents/{id}/status` | PUT | `status` | Update incident status |
+| `/api/playbooks` | GET | — | Playbook library with step definitions |
+| `/api/playbook-runs` | GET | — | Active and historical playbook executions |
+| `/api/rules` | GET | — | Correlation rule library |
+| `/api/metrics` | GET | — | SOC performance metrics and analyst stats |
+| `/ws` | WebSocket | — | Real-time event stream |
+
+---
+
+## Project Structure
+
+```
+threat-intel-platform/
+├── main.py              # FastAPI backend
+│                        #   ├── Mock data constants & generators
+│                        #   ├── In-memory data stores (logs, alerts, IOCs, incidents)
+│                        #   ├── Background async data generator
+│                        #   ├── WebSocket connection manager
+│                        #   └── All REST API routes
+├── requirements.txt     # Python dependencies (fastapi, uvicorn, pydantic, websockets)
+├── run.sh               # Quick-start script — creates venv, installs deps, starts server
+└── frontend/
+    └── index.html       # Single-page SOC dashboard
+                         #   ├── CSS — dark SOC theme, all component styles
+                         #   ├── HTML — sidebar nav, all 10 panel layouts
+                         #   └── JavaScript — WebSocket client, Chart.js charts,
+                         #                    real-time DOM updates, API calls
+```
 
 ---
 
 ## Tech Stack
 
-| Component | Technology |
-|---|---|
-| Backend | Python · FastAPI · Uvicorn |
-| Real-time | WebSocket (native FastAPI) |
-| Frontend | Vanilla HTML/CSS/JavaScript |
-| Charts | Chart.js 4.4 |
-| Data | In-memory stores with live simulation |
-
----
-
-## Screenshots
-
-Open **http://localhost:8001** to see:
-
-- **Overview** — Live KPI counters and charts updating in real time
-- **Log Stream** — Continuous feed of normalized security events
-- **SIEM Alerts** — Color-coded alert table with MITRE ATT&CK context
-- **Incident Kanban** — Drag-and-drop style incident tracking board
-- **Playbooks** — Step-by-step automated response execution
-- **SOC Metrics** — Analyst performance and platform health
+| Component | Technology | Purpose |
+|---|---|---|
+| Backend API | Python 3.9+ · FastAPI | REST endpoints, request validation |
+| ASGI Server | Uvicorn | High-performance async server |
+| Real-time | WebSocket (FastAPI native) | Live event streaming to browser |
+| Data Layer | In-memory (deque + list) | Fast read/write, no database dependency |
+| Frontend | Vanilla HTML / CSS / JavaScript | Zero-dependency single-page app |
+| Charts | Chart.js 4.4 (CDN) | Severity donut, ingestion line, bar charts |
+| Data Models | Pydantic v2 | Request/response schema validation |
