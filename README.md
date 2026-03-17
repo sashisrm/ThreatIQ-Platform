@@ -14,6 +14,8 @@ The platform is designed as both a working SOC tool prototype and an educational
 - [How Data Flows](#how-data-flows)
 - [Mock Data](#mock-data)
 - [Production Readiness](#production-readiness)
+- [Production Deployment Guide](#production-deployment-guide)
+- [Scalability](#scalability)
 - [Platform Layers](#platform-layers)
 - [Dashboard](#dashboard)
 - [Real-Time Engine](#real-time-engine)
@@ -295,6 +297,311 @@ ThreatIQ Frontend (UI layer)
 ```
 
 This approach reuses ThreatIQ's architecture design, MITRE ATT&CK rule mappings, playbook structures, and UI while replacing the mock data layer with production-grade tooling.
+
+---
+
+## Production Deployment Guide
+
+Moving ThreatIQ to production is a phased process. Each phase is independently deployable — start with Phase 1 and build upward.
+
+---
+
+### Phase 1 — Replace Mock Data with Real Log Ingestion
+
+Replace the fake `data_generator()` loop with a real collection pipeline:
+
+```
+Real Sources  →  Log Collectors  →  Kafka (queue)  →  ThreatIQ Backend
+```
+
+| Source Type | Collection Method | Tool |
+|---|---|---|
+| Windows Endpoints | Winlogbeat / Sysmon | Elastic Beats |
+| Linux Servers | Filebeat / Auditbeat | Elastic Beats |
+| Firewalls / Network Devices | Syslog UDP/TCP (port 514) | Logstash / rsyslog |
+| Cloud — AWS | CloudTrail → S3 → Lambda | AWS native + Filebeat |
+| Cloud — Azure | Azure Monitor → Event Hub | Azure native connector |
+| Cloud — GCP | Cloud Logging → Pub/Sub | GCP native connector |
+| Applications | Structured JSON / Log4j | Filebeat |
+| Email (Office 365) | Office 365 Management API | Custom API connector |
+
+All log sources should feed into **Apache Kafka** as a central message queue before reaching the backend. This decouples ingestion from processing and absorbs traffic spikes without data loss.
+
+---
+
+### Phase 2 — Replace In-Memory Stores with Databases
+
+| Current (Simulation) | Production Replacement | Why |
+|---|---|---|
+| `deque` — logs | Elasticsearch index | Time-series optimised, full-text search, petabyte scale |
+| `list` — alerts | PostgreSQL table | ACID compliance, relational joins, full audit history |
+| `list` — incidents | PostgreSQL table | Relational case management with timeline tracking |
+| `list` — IOCs | MISP or OpenCTI | Purpose-built structured threat intelligence platform |
+| `dict` — stats/KPIs | Redis | Sub-millisecond read/write for live dashboard counters |
+| None | S3 / Azure Blob | Long-term log archival for compliance (1–7 years) |
+
+---
+
+### Phase 3 — Add Authentication & Role-Based Access Control
+
+Wrap the FastAPI backend with OAuth2/JWT authentication:
+
+```python
+# Add to main.py
+from fastapi.security import OAuth2PasswordBearer
+from jose import JWTError, jwt
+
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
+```
+
+**Analyst role model:**
+
+| Role | Permissions |
+|---|---|
+| Tier 1 Analyst | View alerts, update alert status, view incidents |
+| Tier 2 Analyst | All T1 + create incidents, execute playbooks |
+| Tier 3 / Threat Hunter | All T2 + manage correlation rules, access raw logs |
+| SOC Manager | All T3 + view metrics, manage analysts, configure feeds |
+| Admin | Full platform access including configuration |
+
+**Recommended identity providers:**
+- **Okta / Azure AD** — enterprise SSO via SAML 2.0 or OIDC
+- **Keycloak** — open-source, self-hosted OAuth2/OIDC server
+
+---
+
+### Phase 4 — Make Playbook Actions Execute Real Integrations
+
+Replace display-only step strings with actual API calls to security tools:
+
+| Playbook Step | Real API Integration |
+|---|---|
+| Isolate Host | CrowdStrike, SentinelOne, or Microsoft Defender for Endpoint API |
+| Block IP / Domain | Palo Alto PAN-OS, Cisco FTD, or pfSense API |
+| Disable Account | Microsoft Graph API (Azure AD) or LDAP |
+| Quarantine Email | Microsoft Security & Compliance API |
+| Reset Password | Okta API or Azure AD API |
+| Create Ticket | ServiceNow REST API or Jira Service Management API |
+| Notify On-Call | PagerDuty Events API or Slack Webhooks |
+| Sandbox File | Any.run, Cuckoo, or Joe Sandbox API |
+| Scan for Lateral Movement | Elastic SIEM hunt query or Splunk correlation search |
+
+---
+
+### Phase 5 — Production Infrastructure
+
+**Containerise with Docker:**
+
+```dockerfile
+FROM python:3.11-slim
+WORKDIR /app
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+COPY . .
+EXPOSE 8001
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8001", "--workers", "4"]
+```
+
+**Add Nginx as reverse proxy with TLS and WebSocket support:**
+
+```nginx
+server {
+    listen 443 ssl;
+    server_name threatiq.yourcompany.com;
+
+    ssl_certificate     /etc/ssl/certs/threatiq.crt;
+    ssl_certificate_key /etc/ssl/private/threatiq.key;
+
+    location / {
+        proxy_pass         http://threatiq-backend:8001;
+        proxy_http_version 1.1;
+        proxy_set_header   Upgrade $http_upgrade;
+        proxy_set_header   Connection "upgrade";
+    }
+}
+```
+
+**Scale horizontally with Kubernetes:**
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: threatiq-backend
+spec:
+  replicas: 3
+  template:
+    spec:
+      containers:
+      - name: threatiq
+        image: threatiq:latest
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "500m"
+          limits:
+            memory: "2Gi"
+            cpu: "2000m"
+```
+
+---
+
+### Full Production Architecture
+
+```
+                     INTERNET / INTERNAL NETWORK
+                                 │
+                 ┌───────────────▼──────────────────┐
+                 │       Nginx Reverse Proxy          │
+                 │   (TLS termination, rate limiting) │
+                 └───────────────┬──────────────────┘
+                                 │
+           ┌─────────────────────▼────────────────────────┐
+           │         ThreatIQ Frontend (CDN / S3)          │
+           │         index.html served as static asset      │
+           └─────────────────────┬────────────────────────┘
+                                 │  REST API + WebSocket
+           ┌─────────────────────▼────────────────────────┐
+           │      ThreatIQ Backend  (3× replicas)          │
+           │      FastAPI + Uvicorn on Kubernetes           │
+           └──┬──────────────┬──────────────┬─────────────┘
+              │              │              │
+     ┌────────▼──┐  ┌────────▼──┐  ┌───────▼──────────┐
+     │   Redis   │  │PostgreSQL │  │  Elasticsearch   │
+     │(KPI cache │  │(alerts,   │  │  (logs, search,  │
+     │ sessions) │  │ incidents)│  │   threat intel)  │
+     └───────────┘  └───────────┘  └──────────────────┘
+                                 │
+           ┌─────────────────────▼────────────────────────┐
+           │              Apache Kafka                      │
+           │        (log ingestion message queue)           │
+           └──┬──────────────┬──────────────┬─────────────┘
+              │              │              │
+     ┌────────▼──┐  ┌────────▼──┐  ┌───────▼───────────┐
+     │  Elastic  │  │  Syslog   │  │   Cloud API       │
+     │   Beats   │  │ Collector │  │   Connectors      │
+     │(endpoints)│  │(firewalls)│  │ (AWS/Azure/GCP)   │
+     └───────────┘  └───────────┘  └───────────────────┘
+```
+
+---
+
+### Production Checklist
+
+```
+Infrastructure
+  ☐ HTTPS / TLS certificate configured on Nginx
+  ☐ Nginx reverse proxy deployed with WebSocket support
+  ☐ Docker containers built, tested, and pushed to registry
+  ☐ Kubernetes deployment manifests written and validated
+  ☐ Health check endpoints implemented (/health, /ready)
+  ☐ Metrics exported to Prometheus and Grafana dashboards
+
+Data Layer
+  ☐ Elasticsearch cluster running (minimum 3 nodes)
+  ☐ PostgreSQL provisioned with schema and migrations
+  ☐ Redis instance running for session and KPI cache
+  ☐ Kafka cluster running (minimum 3 brokers)
+  ☐ At least one real log source actively feeding Kafka
+  ☐ Data retention and index lifecycle policies configured
+  ☐ Backup and restore procedure tested
+
+Security
+  ☐ OAuth2 / JWT authentication implemented on all endpoints
+  ☐ RBAC roles defined and enforced per analyst tier
+  ☐ All secrets stored in environment variables or HashiCorp Vault
+  ☐ Rate limiting enabled on public API endpoints
+  ☐ Audit logging enabled for all analyst actions
+  ☐ Network policies restricting pod-to-pod communication
+
+Operations
+  ☐ Log rotation and archival policies configured
+  ☐ On-call runbook written and distributed
+  ☐ Incident escalation policy defined
+  ☐ SLA thresholds set for MTTD and MTTR alerts
+  ☐ CI/CD pipeline configured for automated deployment
+```
+
+---
+
+## Scalability
+
+### Capacity by Deployment Tier
+
+| Tier | Infrastructure | Log Volume | Analysts | Suitable For |
+|---|---|---|---|---|
+| Development | 1 server, in-memory | Simulated only | 1–2 | Testing and demos |
+| Small SOC | Docker Compose, PostgreSQL + Elasticsearch (single node) | Up to 50K logs/min | 1–5 | Small teams, MSSP lite |
+| Medium SOC | Docker Compose or Kubernetes, multi-node Elasticsearch | Up to 500K logs/min | 5–20 | Mid-size enterprise |
+| Large SOC | Kubernetes cluster, Kafka + Elasticsearch cluster | 500K–5M logs/min | 20–100 | Large enterprise |
+| Enterprise | Multi-region Kubernetes, dedicated Kafka + Elastic clusters | 5M+ logs/min | 100+ | Global enterprise / MSSP |
+
+---
+
+### Scaling Each Component
+
+**Backend API — horizontal scaling**
+Run multiple FastAPI replicas behind a load balancer. Each replica is stateless (all state lives in Redis/PostgreSQL/Elasticsearch), so any number of replicas can serve requests simultaneously.
+
+```
+Load Balancer
+    ├── threatiq-backend-1
+    ├── threatiq-backend-2
+    └── threatiq-backend-3
+```
+
+**WebSocket — sticky sessions**
+WebSocket connections require the same backend instance for the duration of the connection. Configure Nginx with `ip_hash` or use a dedicated WebSocket broker (Redis Pub/Sub) to fan out events to all replicas:
+
+```
+Kafka event
+    → Backend replica (any)
+        → Publish to Redis Pub/Sub channel
+            → All backend replicas subscribe
+                → Broadcast to their connected WebSocket clients
+```
+
+**Log Ingestion — Kafka partitioning**
+Kafka scales horizontally by adding partitions and consumer replicas. Each backend replica consumes from a dedicated partition, allowing parallel processing without duplicate events.
+
+**Elasticsearch — index sharding**
+Split the log index across multiple shards and nodes. For high-volume environments, use daily rolling indices (`logs-2026.03.18`) with Index Lifecycle Management (ILM) to automatically move old data to cheaper storage tiers.
+
+**PostgreSQL — read replicas**
+Add read replicas for alert and incident queries. Write operations (status updates, new incidents) go to the primary; dashboard reads go to replicas.
+
+```
+Primary PostgreSQL   →  writes (new alerts, status updates)
+Read Replica ×2      →  reads  (dashboard queries, metrics)
+```
+
+---
+
+### Performance Benchmarks to Target
+
+| Operation | Target Latency | How to Achieve |
+|---|---|---|
+| Log ingestion throughput | < 100ms per batch | Kafka async consumers, bulk Elasticsearch indexing |
+| Alert query (dashboard load) | < 200ms | PostgreSQL indexes on severity + timestamp + status |
+| IOC lookup on alert enrichment | < 50ms | Redis cache layer in front of MISP/OpenCTI |
+| WebSocket event delivery | < 500ms end-to-end | Redis Pub/Sub fan-out across backend replicas |
+| Incident kanban load | < 300ms | PostgreSQL read replica, paginated queries |
+| Full-text log search | < 2 seconds | Elasticsearch with optimised index mappings |
+
+---
+
+### Recommended Starting Point
+
+Do not attempt to deploy all phases simultaneously. The recommended sequence is:
+
+```
+Week 1  →  Phase 1: Connect one real log source (Windows Sysmon via Winlogbeat → Kafka)
+Week 2  →  Phase 2: Replace in-memory stores with Elasticsearch + PostgreSQL
+Week 3  →  Phase 3: Add JWT authentication and basic RBAC
+Week 4  →  Phase 5: Containerise with Docker, add Nginx with TLS
+Month 2 →  Phase 4: Implement first real playbook integration (e.g. Slack notification)
+Month 3 →  Full Kubernetes deployment, monitoring, and CI/CD
+```
 
 ---
 
