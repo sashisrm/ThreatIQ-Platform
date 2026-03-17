@@ -120,12 +120,38 @@ def require_role(minimum_role: str):
         return {"username": username, **user}
     return _dep
 
-# ── Pydantic auth models ───────────────────────────────────────────────────
+# ── Pydantic models ────────────────────────────────────────────────────────
 
 class TokenResponse(BaseModel):
     access_token: str
     token_type:   str
     user:         dict
+
+class BlockIPRequest(BaseModel):
+    ip:          str
+    reason:      str = "Manual block"
+    incident_id: Optional[str] = None
+
+class IsolateHostRequest(BaseModel):
+    hostname:    str
+    reason:      str = "Manual isolation"
+    incident_id: Optional[str] = None
+
+class QuarantineEmailRequest(BaseModel):
+    sender:      str
+    reason:      str = "Manual quarantine"
+    incident_id: Optional[str] = None
+
+class FirewallRuleRequest(BaseModel):
+    rule:        str
+    direction:   str = "inbound"
+    reason:      str = "Manual rule"
+    incident_id: Optional[str] = None
+
+class ShiftHandoverRequest(BaseModel):
+    shift:          str
+    summary:        str
+    handover_items: List[str] = []
 
 # ── Auth endpoints ─────────────────────────────────────────────────────────
 
@@ -243,6 +269,28 @@ PLAYBOOKS = [
 
 ANALYSTS = ["A.Chen", "M.Rodriguez", "S.Patel", "K.Thompson", "L.Nguyen", "J.Williams", "R.Kumar", "D.Okonkwo"]
 
+# Layer 6 — Response Controls
+RESPONSE_HOSTS = ["WIN-WS-001", "WIN-WS-042", "WIN-WS-107", "LINUX-SRV-01", "LINUX-SRV-03", "MAC-DEV-007", "WIN-WS-099"]
+RESPONSE_REASONS_IP   = ["Threat intelligence match", "C2 beacon detected", "Port scan source", "Brute force origin", "IOC feed hit"]
+RESPONSE_REASONS_HOST = ["Malware detected", "Ransomware behavior", "Credential dump", "Lateral movement source", "C2 callback"]
+RESPONSE_REASONS_FW   = ["C2 IP block", "Geo-based block", "IPS signature match", "Manual policy", "Emergency rule"]
+RESPONSE_REASONS_MAIL = ["Phishing campaign", "Malware attachment", "BEC indicator", "Spoofed sender", "Mass spam source"]
+
+# Layer 7 — Governance
+COMPLIANCE_FRAMEWORKS = [
+    {"framework": "NIST CSF 2.0",   "controls_total": 108, "category": "Risk Management"},
+    {"framework": "SOC 2 Type II",  "controls_total": 64,  "category": "Trust Services"},
+    {"framework": "ISO 27001:2022", "controls_total": 93,  "category": "ISMS"},
+    {"framework": "PCI DSS 4.0",    "controls_total": 256, "category": "Payment Security"},
+    {"framework": "MITRE ATT&CK",   "controls_total": 193, "category": "Threat Coverage"},
+]
+AUDIT_ACTIONS = [
+    "User logged in", "Alert status updated", "Incident status changed", "Playbook executed",
+    "IOC added", "Correlation rule enabled", "Correlation rule disabled", "User account created",
+    "Permission changed", "Report generated", "Shift handover created",
+    "Response action executed", "API key rotated", "Config change applied",
+]
+
 FAKE_IPS_EXT = [
     "185.220.101.45", "91.108.4.1", "45.33.32.156", "198.51.100.23",
     "203.0.113.47", "104.21.234.67", "77.88.55.60", "94.140.14.14",
@@ -287,13 +335,16 @@ GEO_COUNTRIES = ["US", "RU", "CN", "DE", "BR", "UA", "IN", "KR", "IR", "NL", "FR
 # IN-MEMORY STORES
 # ══════════════════════════════════════════════════════════════════════════════
 
-logs_store:      deque       = deque(maxlen=500)
-alerts_store:    List[dict]  = []
-iocs_store:      List[dict]  = []
-incidents_store: List[dict]  = []
-playbook_runs:   List[dict]  = []
-sources_store:   List[dict]  = []
-rules_store:     List[dict]  = []
+logs_store:             deque      = deque(maxlen=500)
+alerts_store:           List[dict] = []
+iocs_store:             List[dict] = []
+incidents_store:        List[dict] = []
+playbook_runs:          List[dict] = []
+sources_store:          List[dict] = []
+rules_store:            List[dict] = []
+response_actions_store: List[dict] = []
+audit_log_store:        deque      = deque(maxlen=1000)
+shift_notes_store:      List[dict] = []
 
 stats: dict = {
     "logs_today":       0,
@@ -314,6 +365,30 @@ stats: dict = {
 
 def now_iso() -> str:
     return datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.") + f"{datetime.utcnow().microsecond // 1000:03d}Z"
+
+def _append_audit(actor: str, action: str, resource: str, resource_type: str, result: str = "success"):
+    audit_log_store.appendleft({
+        "id":            f"AL-{uuid.uuid4().hex[:6].upper()}",
+        "timestamp":     now_iso(),
+        "actor":         actor,
+        "action":        action,
+        "resource":      resource,
+        "resource_type": resource_type,
+        "ip_address":    rand_ip(),
+        "result":        result,
+        "details":       "",
+    })
+
+def _current_shift() -> str:
+    h = datetime.utcnow().hour
+    if 6 <= h < 14:  return "Day"
+    if 14 <= h < 22: return "Evening"
+    return "Night"
+
+def _shift_start_time() -> str:
+    h = datetime.utcnow().hour
+    base = 6 if 6 <= h < 14 else (14 if 14 <= h < 22 else 22)
+    return datetime.utcnow().replace(hour=base, minute=0, second=0, microsecond=0).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 def ts_ago(hours: int = 0, minutes: int = 0) -> str:
     dt = datetime.utcnow() - timedelta(hours=hours, minutes=minutes)
@@ -525,6 +600,77 @@ def init_logs(n: int = 250):
     stats["logs_today"]   = random.randint(280000, 520000)
     stats["logs_per_min"] = random.randint(900, 2800)
 
+def init_response_actions(n: int = 50):
+    action_configs = [
+        ("block_ip",         lambda: rand_ip(True),                          RESPONSE_REASONS_IP),
+        ("isolate_host",     lambda: random.choice(RESPONSE_HOSTS),          RESPONSE_REASONS_HOST),
+        ("quarantine_email", lambda: f"atk_{uuid.uuid4().hex[:4]}@{random.choice(FAKE_DOMAINS)}", RESPONSE_REASONS_MAIL),
+        ("firewall_rule",    lambda: f"DENY {rand_ip(True)}/32 ANY:{random.randint(80,8443)}", RESPONSE_REASONS_FW),
+        ("reset_password",   lambda: rand_user(),                            ["Account compromise", "Forced rotation", "Policy violation"]),
+        ("unblock_ip",       lambda: rand_ip(True),                          ["False positive confirmed", "Whitelist request"]),
+        ("restore_host",     lambda: random.choice(RESPONSE_HOSTS),          ["Cleaned and verified", "Reimaged successfully"]),
+    ]
+    users = list(DEMO_USERS.keys()) if DEMO_USERS else ["analyst2", "admin"]
+    for _ in range(n):
+        atype, target_fn, reasons = random.choice(action_configs)
+        dt = datetime.utcnow() - timedelta(hours=random.randint(0, 72))
+        inc_id = random.choice(incidents_store)["id"] if incidents_store and random.random() > 0.5 else None
+        response_actions_store.append({
+            "id":          f"RA-{uuid.uuid4().hex[:6].upper()}",
+            "action_type": atype,
+            "target":      target_fn(),
+            "reason":      random.choice(reasons),
+            "performed_by":random.choice(users),
+            "timestamp":   dt.strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "status":      random.choices(["completed","pending","failed"], weights=[80,14,6])[0],
+            "automated":   random.random() > 0.55,
+            "incident_id": inc_id,
+        })
+
+def init_audit_log(n: int = 200):
+    users     = list(DEMO_USERS.keys()) if DEMO_USERS else ["analyst1", "analyst2", "admin"]
+    resources = ["/api/alerts", "/api/incidents", "/api/playbooks", "/api/rules",
+                 "/api/threats/iocs", "/auth/token", "/api/response/block-ip",
+                 "/api/governance/shift-handover", "/api/users"]
+    for _ in range(n):
+        dt = datetime.utcnow() - timedelta(hours=random.randint(0, 72))
+        audit_log_store.appendleft({
+            "id":            f"AL-{uuid.uuid4().hex[:6].upper()}",
+            "timestamp":     dt.strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "actor":         random.choice(users),
+            "action":        random.choice(AUDIT_ACTIONS),
+            "resource":      random.choice(resources),
+            "resource_type": random.choice(["alert","incident","user","system","rule","ioc","response","governance"]),
+            "ip_address":    rand_ip(),
+            "result":        random.choices(["success","failure"], weights=[92,8])[0],
+            "details":       f"ref:{uuid.uuid4().hex[:8]}",
+        })
+
+def init_shift_notes(n: int = 6):
+    shifts = ["Day", "Evening", "Night"]
+    users  = list(DEMO_USERS.keys()) if DEMO_USERS else ["manager1"]
+    for i in range(n):
+        dt    = datetime.utcnow() - timedelta(hours=i * 8)
+        shift = shifts[i % 3]
+        open_inc = len([x for x in incidents_store if x["status"] in ("open","investigating")])
+        shift_notes_store.append({
+            "id":             f"SN-{i+1:03d}",
+            "shift":          shift,
+            "date":           dt.strftime("%Y-%m-%d"),
+            "analyst":        random.choice(users),
+            "summary":        f"{shift} shift: {random.randint(5,25)} alerts triaged, {random.randint(0,6)} incidents opened, {random.randint(0,4)} resolved.",
+            "open_incidents": open_inc,
+            "critical_alerts":random.randint(0, 8),
+            "handover_items": random.sample([
+                f"Monitor {rand_ip(True)} for continued C2 activity",
+                f"Pending IR review for INC-{random.randint(1000,1016)}",
+                "Waiting on vendor response for zero-day patch",
+                "Active brute force campaign on VPN — watch auth logs",
+                "Cloud storage exposure remediation in progress",
+            ], k=random.randint(1, 3)),
+            "timestamp":      dt.strftime("%Y-%m-%dT%H:%M:%SZ"),
+        })
+
 def init_data():
     init_sources()
     init_iocs()
@@ -533,6 +679,9 @@ def init_data():
     init_incidents()
     init_playbook_runs()
     init_logs()
+    init_response_actions()
+    init_audit_log()
+    init_shift_notes()
     stats["threats_blocked"] = random.randint(800, 3500)
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -685,6 +834,38 @@ async def data_generator():
                 stats["mttr_minutes"]   = round(random.uniform(32.0, 70.0), 1)
                 stats["sources_active"] = len([s for s in sources_store if s["status"] == "active"])
                 await manager.broadcast({"type": "stats_update", "data": dict(stats)})
+
+            # ── Automated response action (every 10th cycle on high/critical) ─
+            if counter % 10 == 0 and sev in ("high", "critical"):
+                auto_type = random.choice(["block_ip", "isolate_host", "quarantine_email"])
+                auto_target = (new_log["src_ip"] if auto_type == "block_ip"
+                               else (random.choice(RESPONSE_HOSTS) if auto_type == "isolate_host"
+                               else f"threat@{random.choice(FAKE_DOMAINS)}"))
+                auto_action = {
+                    "id":          f"RA-{uuid.uuid4().hex[:6].upper()}",
+                    "action_type": auto_type,
+                    "target":      auto_target,
+                    "reason":      f"Auto-response to {rule[0] if counter % 4 == 0 else sev + ' severity event'}",
+                    "performed_by":"SOAR Engine",
+                    "timestamp":   now_iso(),
+                    "status":      "completed",
+                    "automated":   True,
+                    "incident_id": None,
+                }
+                response_actions_store.insert(0, auto_action)
+                if len(response_actions_store) > 500:
+                    response_actions_store.pop()
+                await manager.broadcast({"type": "new_response_action", "data": auto_action})
+
+            # ── Audit log entry (every 8th cycle) ──────────────────────────
+            if counter % 8 == 0:
+                users = list(DEMO_USERS.keys()) if DEMO_USERS else ["analyst1"]
+                _append_audit(
+                    random.choice(users),
+                    random.choice(AUDIT_ACTIONS),
+                    random.choice(["/api/alerts", "/api/incidents", "/api/response/block-ip", "/api/rules"]),
+                    random.choice(["alert","incident","rule","response"]),
+                )
 
             # ── Playbook step progress (every 15th cycle) ──────────────────
             if counter % 15 == 0 and playbook_runs:
@@ -880,6 +1061,166 @@ def get_metrics(current_user: dict = Depends(require_role("manager"))):
     }
 
 # ══════════════════════════════════════════════════════════════════════════════
+# LAYER 6 — RESPONSE CONTROLS
+# ══════════════════════════════════════════════════════════════════════════════
+
+@app.get("/api/response/stats", tags=["Layer 6"])
+def get_response_stats(_: dict = Depends(require_role("tier1"))):
+    today   = datetime.utcnow().strftime("%Y-%m-%d")
+    today_a = [a for a in response_actions_store if a["timestamp"].startswith(today)]
+    return {
+        "ips_blocked_today":        len([a for a in today_a if a["action_type"] == "block_ip"]),
+        "hosts_isolated_today":     len([a for a in today_a if a["action_type"] == "isolate_host"]),
+        "emails_quarantined_today": len([a for a in today_a if a["action_type"] == "quarantine_email"]),
+        "fw_rules_today":           len([a for a in today_a if a["action_type"] == "firewall_rule"]),
+        "total_actions_today":      len(today_a),
+        "ips_blocked_total":        len([a for a in response_actions_store if a["action_type"] == "block_ip"]),
+        "hosts_isolated_total":     len([a for a in response_actions_store if a["action_type"] == "isolate_host"]),
+        "automated_pct":            round(100 * len([a for a in response_actions_store if a["automated"]]) / max(len(response_actions_store), 1)),
+    }
+
+@app.get("/api/response/actions", tags=["Layer 6"])
+def get_response_actions(
+    limit:       int            = Query(60, le=300),
+    action_type: Optional[str] = None,
+    _: dict = Depends(require_role("tier1")),
+):
+    data = response_actions_store
+    if action_type:
+        data = [a for a in data if a["action_type"] == action_type]
+    return sorted(data, key=lambda x: x["timestamp"], reverse=True)[:limit]
+
+@app.post("/api/response/block-ip", tags=["Layer 6"])
+def block_ip(req: BlockIPRequest, current_user: dict = Depends(require_role("tier2"))):
+    action = {
+        "id":          f"RA-{uuid.uuid4().hex[:6].upper()}",
+        "action_type": "block_ip",
+        "target":      req.ip,
+        "reason":      req.reason,
+        "performed_by":current_user["username"],
+        "timestamp":   now_iso(),
+        "status":      "completed",
+        "automated":   False,
+        "incident_id": req.incident_id,
+    }
+    response_actions_store.insert(0, action)
+    _append_audit(current_user["username"], f"IP blocked: {req.ip}", "/api/response/block-ip", "response")
+    return action
+
+@app.post("/api/response/isolate-host", tags=["Layer 6"])
+def isolate_host(req: IsolateHostRequest, current_user: dict = Depends(require_role("tier2"))):
+    action = {
+        "id":          f"RA-{uuid.uuid4().hex[:6].upper()}",
+        "action_type": "isolate_host",
+        "target":      req.hostname,
+        "reason":      req.reason,
+        "performed_by":current_user["username"],
+        "timestamp":   now_iso(),
+        "status":      "completed",
+        "automated":   False,
+        "incident_id": req.incident_id,
+    }
+    response_actions_store.insert(0, action)
+    _append_audit(current_user["username"], f"Host isolated: {req.hostname}", "/api/response/isolate-host", "response")
+    return action
+
+@app.post("/api/response/quarantine-email", tags=["Layer 6"])
+def quarantine_email(req: QuarantineEmailRequest, current_user: dict = Depends(require_role("tier2"))):
+    action = {
+        "id":          f"RA-{uuid.uuid4().hex[:6].upper()}",
+        "action_type": "quarantine_email",
+        "target":      req.sender,
+        "reason":      req.reason,
+        "performed_by":current_user["username"],
+        "timestamp":   now_iso(),
+        "status":      "completed",
+        "automated":   False,
+        "incident_id": req.incident_id,
+    }
+    response_actions_store.insert(0, action)
+    _append_audit(current_user["username"], f"Email quarantined: {req.sender}", "/api/response/quarantine-email", "response")
+    return action
+
+@app.post("/api/response/firewall-rule", tags=["Layer 6"])
+def add_firewall_rule(req: FirewallRuleRequest, current_user: dict = Depends(require_role("tier3"))):
+    action = {
+        "id":          f"RA-{uuid.uuid4().hex[:6].upper()}",
+        "action_type": "firewall_rule",
+        "target":      req.rule,
+        "reason":      req.reason,
+        "performed_by":current_user["username"],
+        "timestamp":   now_iso(),
+        "status":      "completed",
+        "automated":   False,
+        "incident_id": req.incident_id,
+        "direction":   req.direction,
+    }
+    response_actions_store.insert(0, action)
+    _append_audit(current_user["username"], f"Firewall rule added: {req.rule}", "/api/response/firewall-rule", "response")
+    return action
+
+# ══════════════════════════════════════════════════════════════════════════════
+# LAYER 7 — SOC ANALYSTS & GOVERNANCE
+# ══════════════════════════════════════════════════════════════════════════════
+
+@app.get("/api/governance/compliance", tags=["Layer 7"])
+def get_compliance(_: dict = Depends(require_role("manager"))):
+    return [{
+        "framework":        fw["framework"],
+        "category":         fw["category"],
+        "controls_total":   fw["controls_total"],
+        "controls_passing": int(fw["controls_total"] * random.uniform(0.72, 0.97)),
+        "score":            random.randint(72, 97),
+        "last_assessed":    ts_ago(hours=random.randint(24, 720)),
+        "status":           random.choice(["compliant","partial","partial","review"]),
+        "critical_gaps":    random.randint(0, 8),
+    } for fw in COMPLIANCE_FRAMEWORKS]
+
+@app.get("/api/governance/audit-log", tags=["Layer 7"])
+def get_audit_log(
+    limit:  int            = Query(100, le=500),
+    actor:  Optional[str] = None,
+    result: Optional[str] = None,
+    _: dict = Depends(require_role("manager")),
+):
+    data = list(audit_log_store)
+    if actor:  data = [e for e in data if e["actor"]  == actor]
+    if result: data = [e for e in data if e["result"] == result]
+    return sorted(data, key=lambda x: x["timestamp"], reverse=True)[:limit]
+
+@app.get("/api/governance/shift-report", tags=["Layer 7"])
+def get_shift_report(_: dict = Depends(require_role("tier2"))):
+    return {
+        "current_shift":      _current_shift(),
+        "shift_start":        _shift_start_time(),
+        "analyst_on_duty":    random.choice(ANALYSTS),
+        "alerts_this_shift":  random.randint(15, 80),
+        "incidents_opened":   random.randint(0, 8),
+        "incidents_resolved": random.randint(0, 5),
+        "response_actions":   len([a for a in response_actions_store
+                                   if a["timestamp"] >= _shift_start_time()]),
+        "sla_compliance_pct": random.randint(85, 100),
+        "notes":              list(reversed(shift_notes_store[-4:])),
+    }
+
+@app.post("/api/governance/shift-handover", tags=["Layer 7"])
+def create_shift_handover(req: ShiftHandoverRequest, current_user: dict = Depends(require_role("tier2"))):
+    note = {
+        "id":             f"SN-{uuid.uuid4().hex[:6].upper()}",
+        "shift":          req.shift,
+        "date":           datetime.utcnow().strftime("%Y-%m-%d"),
+        "analyst":        current_user["username"],
+        "summary":        req.summary,
+        "open_incidents": len([i for i in incidents_store if i["status"] in ("open","investigating")]),
+        "critical_alerts":len([a for a in alerts_store  if a["severity"] == "critical" and a["status"] in ("new","investigating")]),
+        "handover_items": req.handover_items,
+        "timestamp":      now_iso(),
+    }
+    shift_notes_store.append(note)
+    _append_audit(current_user["username"], f"Shift handover created: {req.shift}", "/api/governance/shift-handover", "governance")
+    return note
+
+# ══════════════════════════════════════════════════════════════════════════════
 # WEBSOCKET
 # ══════════════════════════════════════════════════════════════════════════════
 
@@ -933,6 +1274,9 @@ async def startup():
     print(f"   ✓ {len(iocs_store)} IOCs in threat intel db")
     asyncio.create_task(data_generator())
     print("   ✓ Real-time data generator running")
+    print(f"   ✓ {len(response_actions_store)} response actions loaded (Layer 6)")
+    print(f"   ✓ {len(audit_log_store)} audit log entries loaded (Layer 7)")
+    print(f"   ✓ {len(shift_notes_store)} shift notes loaded (Layer 7)")
     print("   ✓ Platform ready → http://localhost:8000")
 
 if __name__ == "__main__":

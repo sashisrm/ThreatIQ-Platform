@@ -143,6 +143,21 @@ tr:hover td{background:rgba(24,144,255,.05)}
 .td-mono{font-family:monospace;font-size:11px;color:var(--cyan)}
 .td-trunc{max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
+/* ── BUTTONS ─────────────────────────────────────────────────────────────── */
+.btn{
+  display:inline-flex;align-items:center;gap:6px;padding:6px 14px;
+  border-radius:6px;border:1px solid var(--border);background:var(--card);
+  color:var(--text);font-size:12px;font-weight:500;cursor:pointer;transition:all .15s;
+}
+.btn:hover{border-color:var(--blue);color:var(--blue)}
+.btn-primary{background:rgba(24,144,255,.15);border-color:var(--blue);color:var(--blue)}
+.btn-primary:hover{background:rgba(24,144,255,.25)}
+.data-table{width:100%;border-collapse:collapse;font-size:12px}
+.data-table th{color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.5px;
+   padding:8px 10px;border-bottom:1px solid var(--border);font-weight:600;text-align:left;white-space:nowrap}
+.data-table td{padding:7px 10px;border-bottom:1px solid rgba(26,48,80,.4);vertical-align:middle}
+.data-table tr:hover td{background:rgba(24,144,255,.05)}
+
 /* ── LOG STREAM ─────────────────────────────────────────────────────────── */
 #log-stream{
   height:calc(100vh - 240px);overflow-y:auto;
@@ -346,6 +361,52 @@ tr:hover td{background:rgba(24,144,255,.05)}
 @keyframes toastIn{from{opacity:0;transform:translateX(20px)}to{opacity:1;transform:none}}
 @keyframes toastOut{from{opacity:1}to{opacity:0;transform:translateX(20px)}}
 
+/* ── RESPONSE CONTROLS ───────────────────────────────────────────────────── */
+.action-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px;margin-bottom:20px}
+.action-card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:16px;cursor:pointer;transition:all .2s}
+.action-card:hover{border-color:var(--blue);transform:translateY(-2px)}
+.action-card.red:hover{border-color:var(--red)}
+.action-card.orange:hover{border-color:var(--orange)}
+.action-card.purple:hover{border-color:var(--purple)}
+.action-card.green:hover{border-color:var(--green)}
+.action-icon{font-size:28px;margin-bottom:8px}
+.action-title{font-size:13px;font-weight:700;color:#fff;margin-bottom:4px}
+.action-sub{font-size:11px;color:var(--muted)}
+.action-modal{display:none;position:fixed;inset:0;z-index:500;background:rgba(0,0,0,.7);align-items:center;justify-content:center}
+.action-modal.show{display:flex}
+.action-modal-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:28px;width:420px;max-width:95vw}
+.action-modal-title{font-size:15px;font-weight:700;color:#fff;margin-bottom:18px}
+.form-group{margin-bottom:14px}
+.form-label{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px;display:block}
+.form-input{width:100%;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:8px 12px;color:var(--text);font-size:13px;outline:none}
+.form-input:focus{border-color:var(--blue)}
+.form-actions{display:flex;gap:10px;justify-content:flex-end;margin-top:18px}
+.action-type-badge{display:inline-block;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700;text-transform:uppercase}
+.at-block_ip         {background:rgba(255,77,79,.2);color:#ff6b6b}
+.at-isolate_host     {background:rgba(250,140,22,.2);color:#ffa940}
+.at-quarantine_email {background:rgba(168,85,247,.2);color:#c084fc}
+.at-firewall_rule    {background:rgba(24,144,255,.2);color:#69c0ff}
+.at-reset_password   {background:rgba(250,219,20,.2);color:#ffe57f}
+.at-unblock_ip       {background:rgba(82,196,26,.2); color:#7ed321}
+.at-restore_host     {background:rgba(0,212,255,.2);  color:#00d4ff}
+
+/* ── GOVERNANCE ─────────────────────────────────────────────────────────── */
+.compliance-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:14px;margin-bottom:20px}
+.compliance-card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:16px}
+.compliance-score{font-size:32px;font-weight:800;line-height:1;margin:6px 0}
+.compliance-bar{height:4px;border-radius:2px;background:var(--border);margin:8px 0}
+.compliance-fill{height:100%;border-radius:2px;transition:width .5s}
+.score-good  {color:var(--green)}.score-warn{color:var(--orange)}.score-bad{color:var(--red)}
+.audit-result-success{color:var(--green);font-size:11px;font-weight:700}
+.audit-result-failure{color:var(--red);font-size:11px;font-weight:700}
+.shift-form{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:20px;margin-bottom:16px}
+.shift-note{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:10px}
+.shift-note-header{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+.shift-badge{padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700}
+.shift-day    {background:rgba(24,144,255,.2);color:#69c0ff}
+.shift-evening{background:rgba(250,140,22,.2);color:#ffa940}
+.shift-night  {background:rgba(168,85,247,.2);color:#c084fc}
+
 /* ── LOGIN OVERLAY ───────────────────────────────────────────────────────── */
 #login-overlay{
   position:fixed;inset:0;z-index:9999;
@@ -547,9 +608,18 @@ tr:hover td{background:rgba(24,144,255,.05)}
       <span class="nav-icon">▶</span> Playbooks
     </div>
 
-    <div class="sidebar-section" style="margin-top:8px">Layer 6-7 · Response</div>
+    <div class="sidebar-section" style="margin-top:8px">Layer 6 · Response Controls</div>
+    <div class="nav-item" onclick="showPanel('response')" id="nav-response">
+      <span class="nav-icon">🛡</span> Response Controls
+      <span class="nav-badge" id="badge-response">0</span>
+    </div>
+
+    <div class="sidebar-section" style="margin-top:8px">Layer 7 · Governance</div>
     <div class="nav-item" onclick="showPanel('metrics')" id="nav-metrics">
       <span class="nav-icon">📈</span> SOC Metrics
+    </div>
+    <div class="nav-item" onclick="showPanel('governance')" id="nav-governance">
+      <span class="nav-icon">📋</span> Governance
     </div>
   </aside>
 
@@ -953,6 +1023,161 @@ tr:hover td{background:rgba(24,144,255,.05)}
       </div>
     </div>
 
+    <!-- ═══ RESPONSE CONTROLS (Layer 6) ═══ -->
+    <div class="panel" id="panel-response">
+      <div class="section-header">
+        <div>
+          <div class="section-title">Response Controls</div>
+          <div class="section-sub">Layer 6 — Firewall · Host Isolation · Email Quarantine · IP Blocking</div>
+        </div>
+        <div class="section-actions">
+          <button class="btn btn-primary" onclick="loadResponse()">↻ Refresh</button>
+        </div>
+      </div>
+
+      <!-- KPIs -->
+      <div class="kpi-grid" id="response-kpis">
+        <div class="kpi-card red"><div class="kpi-icon">🚫</div><div class="kpi-label">IPs Blocked Today</div><div class="kpi-value" id="resp-kpi-ips">—</div></div>
+        <div class="kpi-card orange"><div class="kpi-icon">🔒</div><div class="kpi-label">Hosts Isolated Today</div><div class="kpi-value" id="resp-kpi-hosts">—</div></div>
+        <div class="kpi-card purple"><div class="kpi-icon">✉</div><div class="kpi-label">Emails Quarantined</div><div class="kpi-value" id="resp-kpi-email">—</div></div>
+        <div class="kpi-card blue"><div class="kpi-icon">🔥</div><div class="kpi-label">Firewall Rules Today</div><div class="kpi-value" id="resp-kpi-fw">—</div></div>
+        <div class="kpi-card cyan"><div class="kpi-icon">⚡</div><div class="kpi-label">Automated Actions</div><div class="kpi-value" id="resp-kpi-auto">—<span style="font-size:14px;color:var(--muted)">%</span></div></div>
+        <div class="kpi-card green"><div class="kpi-icon">🛡</div><div class="kpi-label">Total Actions (All Time)</div><div class="kpi-value" id="resp-kpi-total">—</div></div>
+      </div>
+
+      <!-- Action Buttons -->
+      <div class="card" style="margin-bottom:16px" id="resp-actions-panel">
+        <div class="card-title">Execute Response Action <span style="color:var(--muted);font-size:10px">(Tier 2+ required)</span></div>
+        <div class="action-grid">
+          <div class="action-card red" onclick="openActionModal('block_ip')">
+            <div class="action-icon">🚫</div>
+            <div class="action-title">Block IP Address</div>
+            <div class="action-sub">Add IP to firewall deny list</div>
+          </div>
+          <div class="action-card orange" onclick="openActionModal('isolate_host')">
+            <div class="action-icon">🔒</div>
+            <div class="action-title">Isolate Host</div>
+            <div class="action-sub">Network-isolate an endpoint</div>
+          </div>
+          <div class="action-card purple" onclick="openActionModal('quarantine_email')">
+            <div class="action-icon">✉</div>
+            <div class="action-title">Quarantine Email</div>
+            <div class="action-sub">Block sender and quarantine</div>
+          </div>
+          <div class="action-card blue" onclick="openActionModal('firewall_rule')">
+            <div class="action-icon">🔥</div>
+            <div class="action-title">Add Firewall Rule</div>
+            <div class="action-sub">Push rule to edge firewall (Tier 3+)</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Action Log Table -->
+      <div class="card">
+        <div class="card-title">Response Action Log</div>
+        <div class="filter-bar" style="margin-bottom:12px">
+          <button class="filter-btn active" onclick="filterResponseActions('all',this)">All</button>
+          <button class="filter-btn" onclick="filterResponseActions('block_ip',this)">Block IP</button>
+          <button class="filter-btn" onclick="filterResponseActions('isolate_host',this)">Isolate Host</button>
+          <button class="filter-btn" onclick="filterResponseActions('quarantine_email',this)">Email</button>
+          <button class="filter-btn" onclick="filterResponseActions('firewall_rule',this)">Firewall</button>
+        </div>
+        <div style="overflow-x:auto">
+          <table class="data-table">
+            <thead><tr><th>ID</th><th>Action</th><th>Target</th><th>Reason</th><th>By</th><th>Status</th><th>Auto</th><th>Time</th></tr></thead>
+            <tbody id="response-log-body"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══ GOVERNANCE (Layer 7) ═══ -->
+    <div class="panel" id="panel-governance">
+      <div class="section-header">
+        <div>
+          <div class="section-title">SOC Governance</div>
+          <div class="section-sub">Layer 7 — Compliance · Audit Log · Shift Handover · SLA Tracking</div>
+        </div>
+        <div class="section-actions">
+          <button class="btn btn-primary" onclick="loadGovernance()">↻ Refresh</button>
+        </div>
+      </div>
+
+      <!-- Shift Status -->
+      <div class="card" style="margin-bottom:16px">
+        <div class="card-title">Current Shift Status</div>
+        <div class="grid-3" id="shift-status-grid" style="margin:0">
+          <div style="text-align:center"><div class="kpi-label">Active Shift</div><div class="kpi-value" id="gov-shift" style="font-size:20px;color:var(--cyan)">—</div></div>
+          <div style="text-align:center"><div class="kpi-label">Analyst on Duty</div><div class="kpi-value" id="gov-analyst" style="font-size:18px;color:var(--text)">—</div></div>
+          <div style="text-align:center"><div class="kpi-label">SLA Compliance</div><div class="kpi-value" id="gov-sla" style="font-size:20px;color:var(--green)">—<span style="font-size:14px">%</span></div></div>
+          <div style="text-align:center"><div class="kpi-label">Alerts This Shift</div><div class="kpi-value" id="gov-alerts" style="font-size:20px;color:var(--orange)">—</div></div>
+          <div style="text-align:center"><div class="kpi-label">Incidents Opened</div><div class="kpi-value" id="gov-inc-opened" style="font-size:20px;color:var(--red)">—</div></div>
+          <div style="text-align:center"><div class="kpi-label">Incidents Resolved</div><div class="kpi-value" id="gov-inc-resolved" style="font-size:20px;color:var(--green)">—</div></div>
+        </div>
+      </div>
+
+      <!-- Compliance Scorecards -->
+      <div class="card" style="margin-bottom:16px" id="gov-compliance-section">
+        <div class="card-title">Compliance Scorecard <span style="color:var(--muted);font-size:10px">(Manager+ required)</span></div>
+        <div class="compliance-grid" id="compliance-grid"></div>
+      </div>
+
+      <!-- Shift Handover Form + Notes side-by-side -->
+      <div class="grid-2">
+        <div>
+          <div class="shift-form" id="gov-handover-form">
+            <div class="card-title">Create Shift Handover Note <span style="color:var(--muted);font-size:10px">(Tier 2+)</span></div>
+            <div class="form-group">
+              <label class="form-label">Shift</label>
+              <select class="form-input" id="handover-shift">
+                <option value="Day">Day (06:00–14:00)</option>
+                <option value="Evening">Evening (14:00–22:00)</option>
+                <option value="Night">Night (22:00–06:00)</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Shift Summary</label>
+              <textarea class="form-input" id="handover-summary" rows="3" placeholder="Describe key events, actions taken, and open items..."></textarea>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Handover Items (one per line)</label>
+              <textarea class="form-input" id="handover-items" rows="3" placeholder="Monitor 185.220.101.45 for C2&#10;Pending review on INC-1003&#10;..."></textarea>
+            </div>
+            <button class="btn btn-primary" onclick="submitHandover()" style="width:100%">Submit Handover Note</button>
+          </div>
+        </div>
+        <div>
+          <div class="card">
+            <div class="card-title">Recent Shift Notes</div>
+            <div id="shift-notes-list"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Audit Log -->
+      <div class="card" style="margin-top:16px" id="gov-audit-section">
+        <div class="card-title">Audit Log <span style="color:var(--muted);font-size:10px">(Manager+ required)</span></div>
+        <div style="overflow-x:auto">
+          <table class="data-table">
+            <thead><tr><th>ID</th><th>Time</th><th>Actor</th><th>Action</th><th>Resource</th><th>Type</th><th>Result</th></tr></thead>
+            <tbody id="audit-log-body"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Response Action Modal -->
+    <div class="action-modal" id="action-modal">
+      <div class="action-modal-card">
+        <div class="action-modal-title" id="action-modal-title">Execute Action</div>
+        <div id="action-modal-body"></div>
+        <div class="form-actions">
+          <button class="btn" onclick="closeActionModal()">Cancel</button>
+          <button class="btn btn-primary" onclick="submitAction()">Execute</button>
+        </div>
+      </div>
+    </div>
+
   </main><!-- end content -->
 </div>
 
@@ -1060,16 +1285,16 @@ function showDashboard() {
   document.getElementById('logout-btn').style.display  = 'block';
 
   // Show/hide nav items based on role
-  // tier1+: all standard nav items
-  // tier2+: playbooks
-  // tier3+: correlation rules
-  // manager+: metrics
-  const showRules   = hasRole('tier3');
-  const showMetrics = hasRole('manager');
-  const showPB      = hasRole('tier2');
-  document.getElementById('nav-rules').style.display    = showRules   ? 'flex' : 'none';
-  document.getElementById('nav-metrics').style.display  = showMetrics ? 'flex' : 'none';
-  document.getElementById('nav-playbooks').style.display = showPB      ? 'flex' : 'none';
+  const showRules      = hasRole('tier3');
+  const showMetrics    = hasRole('manager');
+  const showPB         = hasRole('tier2');
+  const showResponse   = hasRole('tier1');   // visible to all; actions gate inside
+  const showGovernance = hasRole('tier2');
+  document.getElementById('nav-rules').style.display      = showRules      ? 'flex' : 'none';
+  document.getElementById('nav-metrics').style.display    = showMetrics    ? 'flex' : 'none';
+  document.getElementById('nav-playbooks').style.display  = showPB         ? 'flex' : 'none';
+  document.getElementById('nav-response').style.display   = showResponse   ? 'flex' : 'none';
+  document.getElementById('nav-governance').style.display = showGovernance ? 'flex' : 'none';
 
   boot();
 }
@@ -1134,6 +1359,9 @@ function showPanel(name) {
   if (name === 'playbooks')  loadPlaybooks();
   if (name === 'rules')      loadRules();
   if (name === 'metrics')    loadMetrics();
+  if (name === 'response')   loadResponse();
+  if (name === 'governance') loadGovernance();
+  if (name === 'response')   updateBadge('response', 0);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1203,6 +1431,14 @@ function connectWS() {
     }
     if (msg.type === 'playbook_update') {
       if (isActivePanel('playbooks')) loadPlaybooks();
+      return;
+    }
+    if (msg.type === 'new_response_action') {
+      responseActionsAll.unshift(msg.data);
+      const badge = document.getElementById('badge-response');
+      const cur   = parseInt(badge?.textContent || '0') || 0;
+      updateBadge('response', cur + 1);
+      if (isActivePanel('response')) renderResponseLog();
       return;
     }
   };
@@ -1862,6 +2098,270 @@ async function loadMetrics() {
       <span style="font-size:11px;color:var(--muted);min-width:50px;text-align:right">~${a.avg_response_min}m</span>
     </div>
   `).join('');
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// LAYER 6 — RESPONSE CONTROLS
+// ═══════════════════════════════════════════════════════════════════════════
+let responseActionsAll = [];
+let responseFilter = 'all';
+
+const ACTION_LABELS = {
+  block_ip:         'Block IP',
+  isolate_host:     'Isolate Host',
+  quarantine_email: 'Quarantine Email',
+  firewall_rule:    'Firewall Rule',
+  reset_password:   'Reset Password',
+  unblock_ip:       'Unblock IP',
+  restore_host:     'Restore Host',
+};
+
+async function loadResponse() {
+  const [sRes, aRes] = await Promise.all([
+    authFetch('/api/response/stats'),
+    authFetch('/api/response/actions?limit=100'),
+  ]);
+  if (sRes) {
+    const s = await sRes.json().catch(()=>({}));
+    setText('resp-kpi-ips',   s.ips_blocked_today       ?? '—');
+    setText('resp-kpi-hosts', s.hosts_isolated_today     ?? '—');
+    setText('resp-kpi-email', s.emails_quarantined_today ?? '—');
+    setText('resp-kpi-fw',    s.fw_rules_today           ?? '—');
+    setText('resp-kpi-auto',  s.automated_pct            ?? '—');
+    setText('resp-kpi-total', (s.ips_blocked_total||0) + (s.hosts_isolated_total||0));
+  }
+  if (aRes) {
+    responseActionsAll = await aRes.json().catch(()=>[]);
+    renderResponseLog();
+  }
+  // Hide action buttons for tier1 (read-only)
+  if (!hasRole('tier2')) {
+    document.getElementById('resp-actions-panel').style.display = 'none';
+  }
+}
+
+function filterResponseActions(type, btn) {
+  responseFilter = type;
+  document.querySelectorAll('#panel-response .filter-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderResponseLog();
+}
+
+function renderResponseLog() {
+  const data = responseFilter === 'all'
+    ? responseActionsAll
+    : responseActionsAll.filter(a => a.action_type === responseFilter);
+  document.getElementById('response-log-body').innerHTML = data.slice(0, 80).map(a => `
+    <tr>
+      <td style="font-family:monospace;font-size:10px">${escHtml(a.id)}</td>
+      <td><span class="action-type-badge at-${a.action_type}">${ACTION_LABELS[a.action_type] || a.action_type}</span></td>
+      <td style="font-family:monospace;font-size:11px;max-width:160px;overflow:hidden;text-overflow:ellipsis">${escHtml(a.target)}</td>
+      <td style="color:var(--muted);font-size:11px">${escHtml(a.reason)}</td>
+      <td>${escHtml(a.performed_by)}</td>
+      <td><span class="status-badge status-${a.status === 'completed' ? 'resolved' : (a.status === 'failed' ? 'closed' : 'investigating')}">${a.status}</span></td>
+      <td style="text-align:center">${a.automated ? '<span style="color:var(--cyan)">⚡</span>' : '<span style="color:var(--muted)">—</span>'}</td>
+      <td style="font-size:11px;color:var(--muted)">${fmtTs(a.timestamp).slice(11,19)}</td>
+    </tr>
+  `).join('') || '<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:20px">No actions found</td></tr>';
+}
+
+// Action modal
+let currentActionType = '';
+function openActionModal(type) {
+  if (!hasRole('tier2') && type !== 'firewall_rule') {
+    showToast({severity:'high', rule_name:'Access Denied', source_ip:'', mitre_tactic:'Minimum: Tier 2 required'});
+    return;
+  }
+  if (type === 'firewall_rule' && !hasRole('tier3')) {
+    showToast({severity:'high', rule_name:'Access Denied', source_ip:'', mitre_tactic:'Firewall rules require Tier 3+'});
+    return;
+  }
+  currentActionType = type;
+  const titles = {
+    block_ip:         '🚫 Block IP Address',
+    isolate_host:     '🔒 Isolate Host',
+    quarantine_email: '✉ Quarantine Email Sender',
+    firewall_rule:    '🔥 Add Firewall Rule',
+  };
+  document.getElementById('action-modal-title').textContent = titles[type] || 'Execute Action';
+
+  const forms = {
+    block_ip: `
+      <div class="form-group"><label class="form-label">IP Address</label>
+        <input class="form-input" id="modal-input-main" placeholder="e.g. 185.220.101.45"></div>
+      <div class="form-group"><label class="form-label">Reason</label>
+        <input class="form-input" id="modal-input-reason" value="Threat intelligence match"></div>`,
+    isolate_host: `
+      <div class="form-group"><label class="form-label">Hostname</label>
+        <input class="form-input" id="modal-input-main" placeholder="e.g. WIN-WS-042"></div>
+      <div class="form-group"><label class="form-label">Reason</label>
+        <input class="form-input" id="modal-input-reason" value="Malware detected"></div>`,
+    quarantine_email: `
+      <div class="form-group"><label class="form-label">Sender Address / Domain</label>
+        <input class="form-input" id="modal-input-main" placeholder="e.g. attacker@evil.ru"></div>
+      <div class="form-group"><label class="form-label">Reason</label>
+        <input class="form-input" id="modal-input-reason" value="Phishing campaign"></div>`,
+    firewall_rule: `
+      <div class="form-group"><label class="form-label">Rule (CIDR / policy string)</label>
+        <input class="form-input" id="modal-input-main" placeholder="e.g. DENY 185.220.101.45/32 ANY:443"></div>
+      <div class="form-group"><label class="form-label">Direction</label>
+        <select class="form-input" id="modal-input-dir">
+          <option value="inbound">Inbound</option>
+          <option value="outbound">Outbound</option>
+          <option value="both">Both</option>
+        </select></div>
+      <div class="form-group"><label class="form-label">Reason</label>
+        <input class="form-input" id="modal-input-reason" value="C2 IP block"></div>`,
+  };
+  document.getElementById('action-modal-body').innerHTML = forms[type] || '';
+  document.getElementById('action-modal').classList.add('show');
+}
+
+function closeActionModal() {
+  document.getElementById('action-modal').classList.remove('show');
+  currentActionType = '';
+}
+
+async function submitAction() {
+  const main   = document.getElementById('modal-input-main')?.value.trim();
+  const reason = document.getElementById('modal-input-reason')?.value.trim() || 'Manual action';
+  const dir    = document.getElementById('modal-input-dir')?.value || 'inbound';
+  if (!main) { alert('Please fill in the required field.'); return; }
+
+  const endpoints = {
+    block_ip:         ['/api/response/block-ip',         { ip:main, reason }],
+    isolate_host:     ['/api/response/isolate-host',      { hostname:main, reason }],
+    quarantine_email: ['/api/response/quarantine-email',  { sender:main, reason }],
+    firewall_rule:    ['/api/response/firewall-rule',     { rule:main, direction:dir, reason }],
+  };
+  const [url, body] = endpoints[currentActionType];
+  const res = await authFetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type':'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (res && res.ok) {
+    const action = await res.json();
+    closeActionModal();
+    showToast({ severity:'info', rule_name:`Action executed: ${ACTION_LABELS[currentActionType]}`, source_ip: main, mitre_tactic:'Response Controls' });
+    responseActionsAll.unshift(action);
+    renderResponseLog();
+    loadResponse();
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// LAYER 7 — GOVERNANCE
+// ═══════════════════════════════════════════════════════════════════════════
+async function loadGovernance() {
+  // Shift report (tier2+)
+  const srRes = await authFetch('/api/governance/shift-report');
+  if (srRes) {
+    const sr = await srRes.json().catch(()=>({}));
+    setText('gov-shift',       sr.current_shift   || '—');
+    setText('gov-analyst',     sr.analyst_on_duty || '—');
+    setText('gov-sla',         sr.sla_compliance_pct || '—');
+    setText('gov-alerts',      sr.alerts_this_shift  || '—');
+    setText('gov-inc-opened',  sr.incidents_opened   || '—');
+    setText('gov-inc-resolved',sr.incidents_resolved || '—');
+    renderShiftNotes(sr.notes || []);
+  }
+
+  // Compliance (manager+)
+  if (hasRole('manager')) {
+    const cRes = await authFetch('/api/governance/compliance');
+    if (cRes) {
+      const frameworks = await cRes.json().catch(()=>[]);
+      renderCompliance(frameworks);
+    }
+    const alRes = await authFetch('/api/governance/audit-log?limit=80');
+    if (alRes) {
+      const logs = await alRes.json().catch(()=>[]);
+      renderAuditLog(logs);
+    }
+  } else {
+    document.getElementById('gov-compliance-section').innerHTML =
+      '<div class="card-title">Compliance Scorecard</div><div style="color:var(--muted);padding:20px;text-align:center">Manager+ required to view compliance data</div>';
+    document.getElementById('gov-audit-section').innerHTML =
+      '<div class="card-title">Audit Log</div><div style="color:var(--muted);padding:20px;text-align:center">Manager+ required to view audit log</div>';
+  }
+
+  // Hide handover form for tier1
+  if (!hasRole('tier2')) {
+    document.getElementById('gov-handover-form').style.display = 'none';
+  }
+}
+
+function renderCompliance(frameworks) {
+  document.getElementById('compliance-grid').innerHTML = frameworks.map(fw => {
+    const pct  = Math.round((fw.controls_passing / fw.controls_total) * 100);
+    const cls  = pct >= 90 ? 'score-good' : (pct >= 75 ? 'score-warn' : 'score-bad');
+    const fill = pct >= 90 ? 'var(--green)' : (pct >= 75 ? 'var(--orange)' : 'var(--red)');
+    const status = fw.status === 'compliant'
+      ? '<span style="color:var(--green);font-size:11px">✓ Compliant</span>'
+      : (fw.status === 'partial'
+        ? '<span style="color:var(--orange);font-size:11px">⚠ Partial</span>'
+        : '<span style="color:var(--red);font-size:11px">✗ Review Required</span>');
+    return `
+      <div class="compliance-card">
+        <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">${escHtml(fw.framework)}</div>
+        <div class="compliance-score ${cls}">${fw.score}<span style="font-size:14px">%</span></div>
+        <div class="compliance-bar"><div class="compliance-fill" style="width:${pct}%;background:${fill}"></div></div>
+        <div style="display:flex;justify-content:space-between;margin-top:6px">
+          <span style="font-size:11px;color:var(--muted)">${fw.controls_passing}/${fw.controls_total} controls</span>
+          ${status}
+        </div>
+        ${fw.critical_gaps > 0 ? `<div style="font-size:11px;color:var(--red);margin-top:4px">⚠ ${fw.critical_gaps} critical gap${fw.critical_gaps > 1 ? 's' : ''}</div>` : ''}
+      </div>`;
+  }).join('');
+}
+
+function renderAuditLog(logs) {
+  document.getElementById('audit-log-body').innerHTML = logs.slice(0, 80).map(e => `
+    <tr>
+      <td style="font-family:monospace;font-size:10px">${escHtml(e.id)}</td>
+      <td style="font-size:11px;color:var(--muted)">${fmtTs(e.timestamp).slice(0,19)}</td>
+      <td><strong>${escHtml(e.actor)}</strong></td>
+      <td style="font-size:11px">${escHtml(e.action)}</td>
+      <td style="font-family:monospace;font-size:10px;color:var(--muted)">${escHtml(e.resource)}</td>
+      <td><span class="action-type-badge at-${e.resource_type === 'response' ? 'block_ip' : (e.resource_type === 'governance' ? 'firewall_rule' : 'unblock_ip')}" style="text-transform:none">${escHtml(e.resource_type)}</span></td>
+      <td><span class="${e.result === 'success' ? 'audit-result-success' : 'audit-result-failure'}">${e.result}</span></td>
+    </tr>
+  `).join('') || '<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:20px">No audit entries</td></tr>';
+}
+
+function renderShiftNotes(notes) {
+  const shiftClasses = { Day:'shift-day', Evening:'shift-evening', Night:'shift-night' };
+  document.getElementById('shift-notes-list').innerHTML = notes.slice(0, 5).map(n => `
+    <div class="shift-note">
+      <div class="shift-note-header">
+        <span class="shift-badge ${shiftClasses[n.shift] || 'shift-day'}">${n.shift}</span>
+        <span style="color:var(--muted);font-size:11px">${n.date} · ${n.analyst}</span>
+        <span style="margin-left:auto;font-size:10px;color:var(--muted)">${n.open_incidents} open inc · ${n.critical_alerts} crit</span>
+      </div>
+      <div style="font-size:12px;color:var(--text);margin-bottom:6px">${escHtml(n.summary)}</div>
+      ${(n.handover_items||[]).map(item => `<div style="font-size:11px;color:var(--muted);padding:2px 0">→ ${escHtml(item)}</div>`).join('')}
+    </div>
+  `).join('') || '<div style="color:var(--muted);padding:20px;text-align:center">No shift notes yet</div>';
+}
+
+async function submitHandover() {
+  const shift   = document.getElementById('handover-shift')?.value;
+  const summary = document.getElementById('handover-summary')?.value.trim();
+  const items   = (document.getElementById('handover-items')?.value || '')
+    .split('\n').map(s => s.trim()).filter(Boolean);
+  if (!summary) { alert('Please enter a shift summary.'); return; }
+  const res = await authFetch('/api/governance/shift-handover', {
+    method: 'POST',
+    headers: { 'Content-Type':'application/json' },
+    body: JSON.stringify({ shift, summary, handover_items: items }),
+  });
+  if (res && res.ok) {
+    document.getElementById('handover-summary').value = '';
+    document.getElementById('handover-items').value   = '';
+    showToast({ severity:'info', rule_name:'Shift handover submitted', source_ip:'', mitre_tactic:'Governance' });
+    loadGovernance();
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
